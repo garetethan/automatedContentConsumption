@@ -59,8 +59,6 @@ BEGINNING_OF_TIME = '1000-01-01'
 
 STREAM_TYPES = ['downloaded', 'linked', 'manual']
 
-INTRO_MESSAGE = '''Hey, it looks like you may be a first-time user. If so, let me give you a run-down on what this is and how it works.'''
-
 # Let's go!
 def main():
 	root = tk.Tk()
@@ -87,8 +85,10 @@ class MainMenu(tk.Frame):
 	# Display introductory message.
 		win = tk.Toplevel(self.master)
 		win.title('Introduction')
+		with open('README.txt', 'r') as introFile:
+			intro = f'Hey, it looks like you might be new here. If so, let me explain how this works.\n{introFile.read()}'
 		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=DEFAULT_FONT, width=50, wrap='word')
-		introText.insert('end', INTRO_MESSAGE)
+		introText.insert('end', intro)
 		introText.tag_add('centered', '1.0', 'end')
 		introText.tag_config('centered', justify='center')
 		# Makes the text not edit-able.
