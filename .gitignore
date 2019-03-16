@@ -1,0 +1,5 @@
+# Ignore everything except for a few specific files.
+*
+!autoConCon.py
+!.gitignore
+!README.md
