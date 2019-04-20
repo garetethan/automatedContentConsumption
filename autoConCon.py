@@ -40,7 +40,7 @@ CATEGORY_DIR = 'categories'
 # Name of memo file (where memo box data is stored).
 MEMO_PATH = 'memo.txt'
 
-CATEGORY_WIDTH = 300
+CATEGORY_WIDTH = 200
 POPUP_WIDTH = 500
 
 # Font defaults.
@@ -101,7 +101,7 @@ class MainMenu(tk.Frame):
 
 	def displayCategories(self):
 		'''Find and draw all existing content categories.'''
-		categoryNames = [entry for entry in os.listdir(CATEGORY_DIR) if os.path.isdir(f'{CATEGORY_DIR}\\{entry}')]
+		categoryNames = [entry for entry in sorted(os.listdir(CATEGORY_DIR)) if os.path.isdir(f'{CATEGORY_DIR}\\{entry}')]
 		self.categories = []
 		# First column is reserved for buttons.
 		column = 1
@@ -282,7 +282,8 @@ class ContentStream():
 		streamPath = f'{CATEGORY_DIR}\\{self.categoryName}\\{self.name}'
 		
 		# If the stream has files in it but there is no info file, assume the user created a downloaded stream of files and create an info file for it.
-		fileList = [entry for entry in os.listdir(streamPath) if entry != 'info.txt' and entry != 'queue.txt']
+		# It is possible to make an assumption like this only for downloaded streams, because if a directory contains a queue file, it might be linked or manual.
+		fileList = [entry for entry in sorted(os.listdir(streamPath)) if entry != 'info.txt' and entry != 'queue.txt']
 		if not os.path.isfile(f'{streamPath}\\info.txt') and fileList:
 			currentInfo, currentExtension = fileList[0].rsplit('.', maxsplit=1)
 			currentDate, currentName = currentInfo.rsplit('-', maxsplit=1)
@@ -315,12 +316,12 @@ class ContentStream():
 	def updateRSS(self, master, progressMessage):
 		if self.rss and (self.type == 'downloaded' or self.type == 'linked'):
 			# Used by re.sub() to filter out chars that might make invalid file names or contain ';', which would mess with queue files.
-			bannedChars = r'[^a-zA-Z0-9_\.\- ]'
+			bannedChars = r'[^a-zA-Z0-9_\.,\- ]'
 			entries = feedparser.parse(self.rss).entries
 			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
 			if self.type == 'downloaded':
-				alreadyDownloaded = [entry for entry in os.listdir(streamPath) if os.path.isfile(f'{streamPath}\\{entry}') and entry != 'info.txt']
+				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}\\{entry}') and entry != 'info.txt']
 				latestDownloaded = alreadyDownloaded[-1][:10] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries):
 					pubParsed = entries[i].published_parsed
@@ -333,7 +334,7 @@ class ContentStream():
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
 					itemName = re.sub(bannedChars, '_', entry.title)
-					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j} / {i}).')
+					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i}).')
 					try:
 						downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
 					except StopIteration:
@@ -347,18 +348,18 @@ class ContentStream():
 					# Attempt to get file extension from downloadUrl.
 					itemExt = re.sub(r'.*\.([a-zA-Z0-9]*).*', r'\1', downloadUrl)
 					try:
-						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate}-{itemName}.{itemExt}')
+						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate};{itemName}.{itemExt}')
 					except urllib.error.URLError:
 						print(f'Unable to download <{downloadUrl}>. Check your internet connection.')
 						failures += 1
 						if failures >= 3:
 							# Give up on this stream.
 							break
+				forceUpdateMessage(master, progressMessage, '')
 					
 			# Type is linked.
 			else:
 				# Downloading metadata fast enough that there is no point trying to update for every item.
-				forceUpdateMessage(master, progressMessage, '')
 				with open(f'{streamPath}\\queue.txt', 'r') as queueFile:
 					lines = queueFile.readlines()
 					latestSaved = lines[-1][:10] if lines else BEGINNING_OF_TIME
@@ -398,7 +399,7 @@ class ContentCategory(tk.Frame):
 		
 		# Get item list.
 		if cStream.type == 'downloaded':
-			itemList = [entry for entry in os.listdir(streamPath) if os.path.isfile(f'{streamPath}\\{entry}') and entry != 'info.txt']
+			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}\\{entry}') and entry != 'info.txt']
 		# linked or manual
 		else:
 			with open(f'{streamPath}\\queue.txt', 'r') as queueFile:
@@ -411,10 +412,10 @@ class ContentCategory(tk.Frame):
 			oldIndex = -1
 		else:
 			if cStream.type == 'downloaded':
-				oldIndex = findStrStartsWith(itemList, f'{cStream.currentDate}-{cStream.currentName}')	
+				oldIndex = findItem(itemList, cStream.currentDate, cStream.currentName)	
 			# linked or manual
 			else:
-				oldIndex = findStrStartsWith(itemList, f'{cStream.currentDate};{cStream.currentName}')
+				oldIndex = findItem(itemList, cStream.currentDate, cStream.currentName)
 		
 		# If current is last available.
 		if oldIndex + 2 > len(itemList):
@@ -465,6 +466,7 @@ class ContentCategory(tk.Frame):
 		display(self, row=0, column=self.column, rowspan=8)
 		# Keep track of what rows have already been used. Putting every element in the first available row (regardless of what the type of the current stream is) means that manual streams will appear shorter than downloaded and linked, and the buttons that all streams have (eg "Open directory") will appear in different rows for different categories. But some users might only use manual streams, and some only downloaded and linked.
 		rowIndex = 0
+		# The only reason why I do not use displayMessage() here is because it forces font=DEFAULT_FONT.
 		self.headerMessage = tk.Message(self.master, text=self.name, font=HEADER_FONT, width=CATEGORY_WIDTH)
 		display(self.headerMessage, row=rowIndex, column=self.column)
 		rowIndex += 1
@@ -492,7 +494,7 @@ class ContentCategory(tk.Frame):
 				if cStream.currentTime != None:
 					self.currentTimeMessage = displayMessage(self.master, text=cStream.currentTime, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
-					self.timeEntry = tk.Entry(self.master)
+					self.timeEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
 					display(self.timeEntry, row=rowIndex, column=self.column)
 					rowIndex +=1
 					def saveTime():
@@ -542,7 +544,7 @@ def display(widget, *args, **kwargs):
 
 def displayMessage(master, text, width, *args, **kwargs):
 	'''Create and display a message.'''
-	message = tk.Message(master, text=text, width=width, font=DEFAULT_FONT)
+	message = tk.Message(master, text=text, width=width, font=DEFAULT_FONT, justify='center')
 	display(message, *args, **kwargs)
 	return message
 
@@ -554,9 +556,9 @@ def forceUpdateMessage(master, message, text, *args, **kwargs):
 	master.update()
 	master.update_idletasks()
 
-def displayButton(master, text, command, *args, **kwargs):
+def displayButton(master, text, command, wraplength=BUTTON_WRAP_LEN, *args, **kwargs):
 	'''Create and display a button.'''
-	button = tk.Button(master, text=text, command=command, wraplength=BUTTON_WRAP_LEN, font=DEFAULT_FONT)
+	button = tk.Button(master, text=text, command=command, wraplength=wraplength, font=DEFAULT_FONT)
 	display(button, *args, **kwargs)
 	return button
 
@@ -564,7 +566,7 @@ def requestText(win, description=None, width=POPUP_WIDTH):
 		'''Create a Message and an Entry that prompt the user for some text. Return the entry object (so that the caller can use .get() on it to get the submitted value.'''
 		if description:
 			displayMessage(win, text=description, width=width)
-		entry = tk.Entry(win)
+		entry = tk.Entry(win, width=8, font=DEFAULT_FONT)
 		display(entry)
 		return entry
 	
@@ -593,20 +595,29 @@ def openMedia(filepath):
 		else:
 			subprocess.call(('xdg-open', filepath))
 
-def findStrStartsWith(strList, prefix):
+def findItem(strList, date, name):
 	'''Make findStrBinary slightly cleaner to call.'''
 	# I would have just used keyword arguments in definition of findStrBinary, but I can't use len() for end.
-	return findStrBinary(strList, prefix, 0, len(strList))
+	start, end = findItemSubList(strList, date, 0, len(strList))
+	return next(i for i in range(start, end) if f';{name};' in strList[i])
 
-def findStrBinary(strList, prefix, start, end):
-	'''Binary search through strList to find string beginning with prefix. Assume strList is sorted alphabetically. Return index of first string found that begins with prefix.'''
-	middleIndex = (end + start) // 2
+def findItemSubList(strList, prefix, start, end):
+	'''Binary search through strList to find the sublist of strings that all begin with prefix. Assume strList is sorted alphabetically. Return sublist.'''
+	print(f'[DEBUG:] Starting. List: {strList[start:end]}.')
+	middleIndex = (start + end) // 2
 	middle = strList[middleIndex]
 	if middle.startswith(prefix):
-		return middleIndex
-	# We have reached a list of length 1 (or less), and have not found any suitable str.
-	elif end - start < 2:
-		raise ValueError(f'No strs in {strList[:5]} begin with {{{prefix}}}')
+		# Find bounds of sublist.
+		subListStart = middleIndex
+		while strList[subListStart - 1].startswith(prefix):
+			subListStart -= 1
+		subListEnd = middleIndex + 1
+		while strList[subListEnd].startswith(prefix):
+			subListEnd += 1
+		return (subListStart, subListEnd)
+	elif end - start < 1:
+		# We have reached a list of length 1 (or less), and have not found any suitable str.
+		raise ValueError(f'No strs in {strList[:5]}... (only showing first 5 of {len(strList)}) begin with "{prefix}".')
 	elif prefix < middle:
 		return findStrBinary(strList, prefix, start, middleIndex)
 	elif prefix > middle:
