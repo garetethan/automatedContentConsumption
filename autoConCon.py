@@ -597,30 +597,30 @@ def openMedia(filepath):
 
 def findItem(strList, date, name):
 	'''Find item in strList beginning with date and name info (separated by a semicolon). The strList is assumed to be sorted by date, but not necessarily sub-sorted by name. Return index.'''
-	# I would have just used keyword arguments in definition of findStrBinary, but I can't use len() for end.
 	start, end = findItemSubList(strList, date, 0, len(strList))
 	return next(i for i in range(start, end) if strList[i].startswith(f'{date};{name}'))
 
-def findItemSubList(strList, prefix, start, end):
-	'''Binary search through strList to find the sublist of strings that all begin with prefix. Assume strList is sorted alphabetically. Return sublist.'''
+def findItemSubList(strList, date, start, end):
+	'''Binary search through strList to find the sublist of strings that all begin with date. Assume strList is sorted alphabetically. Return start and end indices of the sublist.'''
 	middleIndex = (start + end) // 2
 	middle = strList[middleIndex]
-	if middle.startswith(prefix):
+	if middle.startswith(date):
 		# Find bounds of sublist.
 		subListStart = middleIndex
-		while strList[subListStart - 1].startswith(prefix):
+		while subListStart > 0 and strList[subListStart - 1].startswith(date):
 			subListStart -= 1
+		# subListEnd index is exclusive.
 		subListEnd = middleIndex + 1
-		while strList[subListEnd].startswith(prefix):
+		while subListEnd < len(strList) and strList[subListEnd].startswith(date):
 			subListEnd += 1
 		return (subListStart, subListEnd)
 	elif end - start < 1:
 		# We have reached a list of length 1 (or less), and have not found any suitable str.
-		raise ValueError(f'No strs in {strList[:5]}... (only showing first 5 of {len(strList)}) begin with "{prefix}".')
-	elif prefix < middle:
-		return findItemSubList(strList, prefix, start, middleIndex)
-	elif prefix > middle:
-		return findItemSubList(strList, prefix, middleIndex + 1, end)
+		raise ValueError(f'No strs in {strList[:5]}... (only showing first 5 of {len(strList)}) begin with "{date}".')
+	elif date < middle:
+		return findItemSubList(strList, date, start, middleIndex)
+	elif date > middle:
+		return findItemSubList(strList, date, middleIndex + 1, end)
 
 if __name__ == '__main__':
 	main()
