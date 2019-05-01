@@ -85,13 +85,13 @@ class MainMenu(tk.Frame):
 	# Display introductory message.
 		win = tk.Toplevel(self.master)
 		win.title('Introduction')
-		with open('README.txt', 'r') as introFile:
+		with open('README.md', 'r') as introFile:
 			intro = f'Hey, it looks like you might be new here. If so, let me explain how this works.\n{introFile.read()}'
 		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=DEFAULT_FONT, width=50, wrap='word')
 		introText.insert('end', intro)
 		introText.tag_add('centered', '1.0', 'end')
 		introText.tag_config('centered', justify='center')
-		# Makes the text not edit-able.
+		# Makes the text not editable.
 		introText.config(state='disabled')
 		display(introText, row=0, column=0)
 		scroller = tk.Scrollbar(win, command=introText.yview)
@@ -512,7 +512,7 @@ class ContentCategory(tk.Frame):
 				# Button to open items for downloaded.
 				if cStream.type == 'downloaded':
 					def openCurrent():
-						openMedia(f'{streamPath}\\{cStream.currentDate}-{cStream.currentName}.{cStream.currentExtension}')
+						openMedia(f'{streamPath}\\{cStream.currentDate};{cStream.currentName}.{cStream.currentExtension}')
 					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
 					rowIndex += 1
 				# Button to open items for linked.
@@ -596,14 +596,13 @@ def openMedia(filepath):
 			subprocess.call(('xdg-open', filepath))
 
 def findItem(strList, date, name):
-	'''Make findStrBinary slightly cleaner to call.'''
+	'''Find item in strList beginning with date and name info (separated by a semicolon). The strList is assumed to be sorted by date, but not necessarily sub-sorted by name. Return index.'''
 	# I would have just used keyword arguments in definition of findStrBinary, but I can't use len() for end.
 	start, end = findItemSubList(strList, date, 0, len(strList))
-	return next(i for i in range(start, end) if f';{name};' in strList[i])
+	return next(i for i in range(start, end) if strList[i].startswith(f'{date};{name}'))
 
 def findItemSubList(strList, prefix, start, end):
 	'''Binary search through strList to find the sublist of strings that all begin with prefix. Assume strList is sorted alphabetically. Return sublist.'''
-	print(f'[DEBUG:] Starting. List: {strList[start:end]}.')
 	middleIndex = (start + end) // 2
 	middle = strList[middleIndex]
 	if middle.startswith(prefix):
@@ -619,9 +618,9 @@ def findItemSubList(strList, prefix, start, end):
 		# We have reached a list of length 1 (or less), and have not found any suitable str.
 		raise ValueError(f'No strs in {strList[:5]}... (only showing first 5 of {len(strList)}) begin with "{prefix}".')
 	elif prefix < middle:
-		return findStrBinary(strList, prefix, start, middleIndex)
+		return findItemSubList(strList, prefix, start, middleIndex)
 	elif prefix > middle:
-		return findStrBinary(strList, prefix, middleIndex + 1, end)
+		return findItemSubList(strList, prefix, middleIndex + 1, end)
 
 if __name__ == '__main__':
 	main()
