@@ -75,7 +75,6 @@ class MainMenu(tk.Frame):
 		# If the main content directory has not been created yet, treat as first run.
 		if not os.path.isdir(CATEGORY_DIR):
 			os.mkdir(CATEGORY_DIR)
-			self.intro()
 		
 		self.displayCategories()
 		self.displayButtons()
@@ -101,7 +100,8 @@ class MainMenu(tk.Frame):
 
 	def displayCategories(self):
 		'''Find and draw all existing content categories.'''
-		categoryNames = [entry for entry in sorted(os.listdir(CATEGORY_DIR)) if os.path.isdir(f'{CATEGORY_DIR}\\{entry}')]
+		categoryNames = [entry for entry in sorted(os.listdir(CATEGORY_DIR))
+ if os.path.isdir(f'{CATEGORY_DIR}/{entry}')]
 		self.categories = []
 		# First column is reserved for buttons.
 		column = 1
@@ -134,7 +134,7 @@ class MainMenu(tk.Frame):
 		progressMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=3)
 		for category in self.categories:
 			for stream in category.streams:
-				forceUpdateMessage(self.master, streamMessage, f'Updating {category.name}\\{stream.name}.')
+				forceUpdateMessage(self.master, streamMessage, f'Updating {category.name}/{stream.name}.')
 				stream.updateRSS(self.master, progressMessage)
 		win.destroy()
 		self.refresh()
@@ -146,8 +146,8 @@ class MainMenu(tk.Frame):
 		nameVar = requestText(win, description='Enter the name of the new category below.')
 		def submit():
 			name = nameVar.get()
-			if not os.path.isdir(f'{CATEGORY_DIR}\\{name}'):
-				os.mkdir(f'{CATEGORY_DIR}\\{name}')
+			if not os.path.isdir(f'{CATEGORY_DIR}/{name}'):
+				os.mkdir(f'{CATEGORY_DIR}/{name}')
 			self.refresh()
 			win.destroy()
 		displayButton(win, text='Submit', command=submit)
@@ -162,7 +162,7 @@ class MainMenu(tk.Frame):
 		def submit():
 			oldName = oldNameVar.get()
 			newName = newNameVar.get()
-			os.rename(f'{CATEGORY_DIR}\\{oldName}', f'{CATEGORY_DIR}\\{newName}')
+			os.rename(f'{CATEGORY_DIR}/{oldName}', f'{CATEGORY_DIR}/{newName}')
 			category = next(c for c in self.categories if c.name == oldName)
 			category.name = newName
 			self.refresh()
@@ -184,14 +184,14 @@ class MainMenu(tk.Frame):
 			name = nameVar.get()
 			categoryName = categoryVar.get()
 			rss = rssVar.get()
-			streamPath = f'{CATEGORY_DIR}\\{categoryName}\\{name}'
+			streamPath = f'{CATEGORY_DIR}/{categoryName}/{name}'
 			if not os.path.isdir(streamPath):
 				os.mkdir(streamPath)
 			infoLines = [streamType, rss, BEGINNING_OF_TIME, 'No name info.', 'No time info.', '']
 			with open(f'{streamPath}/info.txt', 'w+') as infoFile:
 				infoFile.writelines([f'{line}\n' for line in infoLines])
-			if streamType == 'linked' and not os.path.isfile(f'{streamPath}\\queue.txt'):
-				open(f'{streamPath}\\queue.txt', 'w').close()
+			if streamType == 'linked' and not os.path.isfile(f'{streamPath}/queue.txt'):
+				open(f'{streamPath}/queue.txt', 'w').close()
 			category = next(c for c in self.categories if c.name == categoryName)
 			newStream = ContentStream(category.name, name)
 			# Remove old category info (so that it doesn't appear in the background).
@@ -230,15 +230,15 @@ class MainMenu(tk.Frame):
 					newStreamName = oldStreamName
 				newRss = rssVar.get()
 				# Move stream directory.
-				newStreamPath = f'{CATEGORY_DIR}\\{newCategoryName}\\{newStreamName}'
-				os.rename(f'{CATEGORY_DIR}\\{oldCategoryName}\\{oldStreamName}', newStreamPath)
+				newStreamPath = f'{CATEGORY_DIR}/{newCategoryName}/{newStreamName}'
+				os.rename(f'{CATEGORY_DIR}/{oldCategoryName}/{oldStreamName}', newStreamPath)
 				# Update RSS.
 				if newRss:
-					with open(f'{newStreamPath}\\info.txt', 'r') as infoFile:
+					with open(f'{newStreamPath}/info.txt', 'r') as infoFile:
 						infoLines = infoFile.readlines()
 					if oldStream.type != 'manual':
 						infoLines[1] = f'{newRss}\n'
-						with open(f'{newStreamPath}\\info.txt', 'w') as infoFile:
+						with open(f'{newStreamPath}/info.txt', 'w') as infoFile:
 							infoFile.writelines(infoLines)
 						oldStream.rss = newRss
 				# Move stream obect into new category's list and rename stream object.
@@ -279,19 +279,19 @@ class ContentStream():
 	def __init__(self, categoryName, streamName):
 		self.name = streamName
 		self.categoryName = categoryName
-		streamPath = f'{CATEGORY_DIR}\\{self.categoryName}\\{self.name}'
+		streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 		
 		# If the stream has files in it but there is no info file, assume the user created a downloaded stream of files and create an info file for it.
 		# It is possible to make an assumption like this only for downloaded streams, because if a directory contains a queue file, it might be linked or manual.
 		fileList = [entry for entry in sorted(os.listdir(streamPath)) if entry != 'info.txt' and entry != 'queue.txt']
-		if not os.path.isfile(f'{streamPath}\\info.txt') and fileList:
+		if not os.path.isfile(f'{streamPath}/info.txt') and fileList:
 			currentInfo, currentExtension = fileList[0].rsplit('.', maxsplit=1)
 			currentDate, currentName = currentInfo.rsplit('-', maxsplit=1)
 			infoLines = ['downloaded', '', currentDate, currentName, currentExtension, '']
-			with open(f'{streamPath}\\info.txt', 'w+') as infoFile:
+			with open(f'{streamPath}/info.txt', 'w+') as infoFile:
 				infoFile.writelines([f'{line}\n' for line in infoLines])
 		
-		with open(f'{streamPath}\\info.txt', 'r') as infoFile:
+		with open(f'{streamPath}/info.txt', 'r') as infoFile:
 			# Save lines but chop newlines off of end of each line.
 			infoLines = [line[:-1] for line in infoFile.readlines()]
 		# Save values which are constant across all stream types.
@@ -307,8 +307,8 @@ class ContentStream():
 			# Type is linked.
 			else:
 				self.currentUrl = infoLines[4]
-				if not os.path.isfile(f'{streamPath}\\queue.txt'):
-					open(f'{streamPath}\\queue.txt', 'w+').close()
+				if not os.path.isfile(f'{streamPath}/queue.txt'):
+					open(f'{streamPath}/queue.txt', 'w+').close()
 			
 			self.currentTime = infoLines[5] if len(infoLines) > 5 else None
 			self.currentAuthor = None
@@ -321,7 +321,7 @@ class ContentStream():
 			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
 			if self.type == 'downloaded':
-				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}\\{entry}') and entry != 'info.txt']
+				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 				latestDownloaded = alreadyDownloaded[-1][:10] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries):
 					pubParsed = entries[i].published_parsed
@@ -360,7 +360,7 @@ class ContentStream():
 			# Type is linked.
 			else:
 				# Downloading metadata fast enough that there is no point trying to update for every item.
-				with open(f'{streamPath}\\queue.txt', 'r') as queueFile:
+				with open(f'{streamPath}/queue.txt', 'r') as queueFile:
 					lines = queueFile.readlines()
 					latestSaved = lines[-1][:10] if lines else BEGINNING_OF_TIME
 				newItems = ''
@@ -378,15 +378,19 @@ class ContentStream():
 					newItems = f'{newItems}{itemDate};{itemName};{itemUrl}\n'
 					
 				# We append to the file so that we don't overwrite any items already there.
-				with open(f'{streamPath}\\queue.txt', 'a') as queueFile:
+				with open(f'{streamPath}/queue.txt', 'a') as queueFile:
 					queueFile.write(newItems)
+	def __repr__(self):
+		return f'ContentStream({self.categoryName}, {self.name})'
+	def __str__(self):
+		return f'ContentStream \'{self.name}\' in category \'{self.categoryName}\''
 
 class ContentCategory(tk.Frame):
 	'''Represent a category of streams like 'Videos' or 'Favourites'. Can contain multiple streams of different types.'''
 	def __init__(self, master=None, name=None, column=0):
 		super().__init__(master)
 		self.name = name
-		streamNames = [entry for entry in os.listdir(f'{CATEGORY_DIR}\\{self.name}') if os.path.isdir(f'{CATEGORY_DIR}\\{self.name}\\{entry}')]
+		streamNames = [entry for entry in os.listdir(f'{CATEGORY_DIR}/{self.name}') if os.path.isdir(f'{CATEGORY_DIR}/{self.name}/{entry}')]
 		self.streams = []
 		for streamName in streamNames:
 			self.streams.append(ContentStream(self.name, streamName))
@@ -395,14 +399,14 @@ class ContentCategory(tk.Frame):
 	
 	def completeCurrent(self):
 		cStream = self.currentStream
-		streamPath = f'{CATEGORY_DIR}\\{self.name}\\{cStream.name}'
+		streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
 		
 		# Get item list.
 		if cStream.type == 'downloaded':
-			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}\\{entry}') and entry != 'info.txt']
+			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 		# linked or manual
 		else:
-			with open(f'{streamPath}\\queue.txt', 'r') as queueFile:
+			with open(f'{streamPath}/queue.txt', 'r') as queueFile:
 				# Last line is always '\n', and last char of each line is '\n'.
 				itemList = queueFile.readlines()[:-1][:-1]
 		
@@ -451,7 +455,7 @@ class ContentCategory(tk.Frame):
 				infoLines.append('0:0:0')
 			infoLines.append('')
 				
-			with open(f'{streamPath}\\info.txt', 'w') as infoFile:
+			with open(f'{streamPath}/info.txt', 'w') as infoFile:
 					infoFile.writelines([f'{line}\n' for line in infoLines])
 			
 			# Update UI.
@@ -471,7 +475,7 @@ class ContentCategory(tk.Frame):
 		display(self.headerMessage, row=rowIndex, column=self.column)
 		rowIndex += 1
 		if self.streams:
-			streamPath = f'{CATEGORY_DIR}\\{self.name}\\{cStream.name}'
+			streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
 			displayMessage(self.master, text=cStream.name, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
 			if cStream.type == 'manual':
@@ -499,7 +503,7 @@ class ContentCategory(tk.Frame):
 					rowIndex +=1
 					def saveTime():
 						time = self.timeEntry.get()
-						infoPath = f'{streamPath}\\info.txt'
+						infoPath = f'{streamPath}/info.txt'
 						with open(infoPath, 'r') as infoFile:
 							lines = infoFile.readlines()
 						lines[5] = time
@@ -512,7 +516,7 @@ class ContentCategory(tk.Frame):
 				# Button to open items for downloaded.
 				if cStream.type == 'downloaded':
 					def openCurrent():
-						openMedia(f'{streamPath}\\{cStream.currentDate};{cStream.currentName}.{cStream.currentExtension}')
+						openMedia(f'{streamPath}/{cStream.currentDate};{cStream.currentName}.{cStream.currentExtension}')
 					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
 					rowIndex += 1
 				# Button to open items for linked.
@@ -525,7 +529,7 @@ class ContentCategory(tk.Frame):
 			displayButton(self.master, text='Complete', command=self.completeCurrent, row=rowIndex, column=self.column)
 			rowIndex += 1
 			def openInfoFile():
-				openMedia(f'{streamPath}\\info.txt')
+				openMedia(f'{streamPath}/info.txt')
 			displayButton(self.master, text='Open info file', command=openInfoFile, row=rowIndex, column=self.column)
 			rowIndex +=1
 		# We have no streams.
@@ -534,9 +538,15 @@ class ContentCategory(tk.Frame):
 			rowIndex += 1
 		# Whether we have streams or not.
 		def openDirectory():
-			openMedia(f'{CATEGORY_DIR}\\{self.name}')
+			openMedia(f'{CATEGORY_DIR}/{self.name}')
 		displayButton(self.master, text='Open directory', command=openDirectory, row=rowIndex, column=self.column)
 		rowIndex += 1
+	
+	def __repr__(self):
+		return f'ContentCategory({self.master}, {self.name})'
+	
+	def __str__(self):
+		return f'ContentStream \'{self.name}\' with {len(self.streams)} streams'
 	
 def display(widget, *args, **kwargs):
 	'''Wrap .grid() to automatically applying padding.'''
@@ -593,7 +603,8 @@ def openMedia(filepath):
 			os.startfile(filepath)
 		# Assume os.name == 'posix'
 		else:
-			subprocess.call(('xdg-open', filepath))
+			with open(os.devnull, 'wb') as devnull:
+				subprocess.check_call(['xdg-open', filepath], stdout=devnull, stderr=subprocess.STDOUT)
 
 def findItem(strList, date, name):
 	'''Find item in strList beginning with date and name info (separated by a semicolon). The strList is assumed to be sorted by date, but not necessarily sub-sorted by name. Return index.'''
