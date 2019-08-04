@@ -54,8 +54,9 @@ PADY = 6
 # Default tk.Button wraplength value.
 BUTTON_WRAP_LEN = 200
 
-# Dates before the BEGINNING_OF_TIME are not supported.
+# Only dates strictly after the BEGINNING_OF_TIME and strictly before the END_OF_TIME are supported.
 BEGINNING_OF_TIME = '1000-01-01'
+END_OF_TIME = '9000-01-01'
 
 STREAM_TYPES = ['downloaded', 'linked', 'manual']
 
@@ -285,6 +286,8 @@ class ContentStream():
 		# It is possible to make an assumption like this only for downloaded streams, because if a directory contains a queue file, it might be linked or manual.
 		fileList = [entry for entry in sorted(os.listdir(streamPath)) if entry != 'info.txt' and entry != 'queue.txt']
 		if not os.path.isfile(f'{streamPath}/info.txt') and fileList:
+			print(f'stream = {self.name}; len(fileList) = {len(fileList)}; fileList[0] = {fileList[0]}')
+			print(f'fileList sample: {fileList[:5]}')
 			currentInfo, currentExtension = fileList[0].rsplit('.', maxsplit=1)
 			currentDate, currentName = currentInfo.rsplit('-', maxsplit=1)
 			infoLines = ['downloaded', '', currentDate, currentName, currentExtension, '']
@@ -329,6 +332,7 @@ class ContentStream():
 					if itemDate <= latestDownloaded:
 						break
 					i += 1
+				
 				failures = 0
 				for j, entry in enumerate(reversed(entries[:i])):
 					pubParsed = entry.published_parsed
@@ -359,10 +363,10 @@ class ContentStream():
 					
 			# Type is linked.
 			else:
-				# Downloading metadata fast enough that there is no point trying to update for every item.
+				# Downloading metadata is fast enough that there is no point trying to update for every item.
 				with open(f'{streamPath}/queue.txt', 'r') as queueFile:
-					lines = queueFile.readlines()
-					latestSaved = lines[-1][:10] if lines else BEGINNING_OF_TIME
+					queueLines = queueFile.readlines()
+					latestSaved = queueLines[-1][:10] if queueLines else BEGINNING_OF_TIME
 				newItems = ''
 				while i < len(entries):
 					pubParsed = entries[i].published_parsed
@@ -370,6 +374,17 @@ class ContentStream():
 					if itemDate <= latestSaved:
 						break
 					i += 1
+				
+				# If this stream has been disabled but there are updates now, enable it.
+				with open(f'{streamPath}/info.txt', 'r') as infoFile:
+					infoLines = infoFile.readlines()
+				currentDate = infoLines[2][:-1]
+				if currentDate == END_OF_TIME and entries:
+					pubParsed = entry.published_parsed
+					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
+					with open(f'{streamPath}/info.txt', 'w') as infoFile:
+						infoFile.write(infoLines)
+				
 				for entry in reversed(entries[:i]):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
@@ -410,7 +425,7 @@ class ContentCategory(tk.Frame):
 				# Last line is always '\n', and last char of each line is '\n'.
 				itemList = queueFile.readlines()[:-1][:-1]
 		
-		# Case when there is no current.
+		# If there is no current.
 		if cStream.currentDate == BEGINNING_OF_TIME:
 			# Does not represent the last item in the list, but that the index of the "next" item is 0.
 			oldIndex = -1
@@ -427,40 +442,43 @@ class ContentCategory(tk.Frame):
 			win.title('End of stream')
 			displayMessage(win, text='You have reached the end of this stream (until it is updated).', width=POPUP_WIDTH)
 			displayButton(win, text='Close', command=win.destroy)
-		
+			# We need to temporarily disable this stream so that any other streams that still have next items can be displayed.
+			cStream.currentDate = END_OF_TIME
 		# There is a next one.
 		else:
 			# Update stream object.
 			if cStream.type == 'downloaded':
 				currentInfo, cStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
 				cStream.currentDate, cStream.currentName = currentInfo[:10], currentInfo[11:]
-			# linked or manual
+			# linked
 			elif cStream.type == 'linked':
 				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(';', maxsplit=2)
-			else:
-				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(';', maxsplit=2)
-			# Update current in info file.
-			infoLines = [cStream.type]
-			infoLines.append(cStream.rss if cStream.rss else '')
-			infoLines.extend((cStream.currentDate, cStream.currentName))
-			if cStream.type == 'downloaded':
-				infoLines.append(cStream.currentExtension)
-			elif cStream.type == 'linked':
-				infoLines.append(cStream.currentUrl)
 			# manual
 			else:
-				infoLines.append(cStream.currentAuthor)
-			# Here there is a difference between '' and None.
-			if cStream.currentTime != None:
-				infoLines.append('0:0:0')
-			infoLines.append('')
-				
-			with open(f'{streamPath}/info.txt', 'w') as infoFile:
-					infoFile.writelines([f'{line}\n' for line in infoLines])
+				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(';', maxsplit=2)
+
+		# Update current in info file.
+		infoLines = [cStream.type]
+		infoLines.append(cStream.rss if cStream.rss else '')
+		infoLines.extend((cStream.currentDate, cStream.currentName))
+		if cStream.type == 'downloaded':
+			infoLines.append(cStream.currentExtension)
+		elif cStream.type == 'linked':
+			infoLines.append(cStream.currentUrl)
+		# manual
+		else:
+			infoLines.append(cStream.currentAuthor)
+		# Here there is a difference between '' and None.
+		if cStream.currentTime != None:
+			infoLines.append('0:0:0')
+		infoLines.append('')
 			
-			# Update UI.
-			self.grid_forget()
-			self.draw()
+		with open(f'{streamPath}/info.txt', 'w') as infoFile:
+			infoFile.writelines([f'{line}\n' for line in infoLines])
+		
+		# Update UI.
+		self.grid_forget()
+		self.draw()
 	
 	# Not to be confused with display(), which is defined below and works on Tkinter elements.
 	def draw(self):
@@ -516,7 +534,13 @@ class ContentCategory(tk.Frame):
 				# Button to open items for downloaded.
 				if cStream.type == 'downloaded':
 					def openCurrent():
-						openMedia(f'{streamPath}/{cStream.currentDate};{cStream.currentName}.{cStream.currentExtension}')
+						if cStream.currentDate == BEGINNING_OF_TIME:
+							win = tk.Toplevel()
+							win.title('Empty stream')
+							displayMessage(win, text='This stream does not yet contain any media items to open.', width=POPUP_WIDTH)
+							displayButton(win, text='Close', command=win.destroy)
+						else:
+							openMedia(f'{streamPath}/{cStream.currentDate};{cStream.currentName}.{cStream.currentExtension}')
 					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
 					rowIndex += 1
 				# Button to open items for linked.
