@@ -34,6 +34,10 @@ import feedparser
 # File downloading.
 import urllib.request
 
+# When downloading using RSS, a downloaded stream will stop downloading when this many items are saved locally. (Prevents using too much disk space.)
+# Once this limit is reached, old files (that have been consumed) must be manually deleted.
+ITEM_LIMIT = 1000000
+
 # Name of directory containing all content data.
 CATEGORY_DIR = 'categories'
 
@@ -334,11 +338,12 @@ class ContentStream():
 					i += 1
 				
 				failures = 0
-				for j, entry in enumerate(reversed(entries[:i])):
+				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
+				for j, entry in enumerate(reversed(entries[start:i])):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
 					itemName = re.sub(bannedChars, '_', entry.title)
-					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i}).')
+					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i - start}).')
 					try:
 						downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
 					except StopIteration:
@@ -351,14 +356,16 @@ class ContentStream():
 							continue
 					# Attempt to get file extension from downloadUrl.
 					itemExt = re.sub(r'.*\.([a-zA-Z0-9]*).*', r'\1', downloadUrl)
-					try:
-						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate};{itemName}.{itemExt}')
+					#try:
+					urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate};{itemName}.{itemExt}')
+					'''
 					except urllib.error.URLError:
-						print(f'Unable to download <{downloadUrl}>. Check your internet connection.')
+						print(f'Unable to download <{downloadUrl}> in {self.name}. Check your internet connection.')
 						failures += 1
 						if failures >= 3:
 							# Give up on this stream.
 							break
+					'''
 				forceUpdateMessage(master, progressMessage, '')
 					
 			# Type is linked.

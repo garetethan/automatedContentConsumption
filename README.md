@@ -13,7 +13,7 @@ Categories are directories (folders) inside of the main content directory (defin
 ### Streams
 There are three types of streams: downloaded, linked, and manual.
 
-A downloaded stream is a list of locally saved files that this program goes through in order, from oldest to newest. The names of these files are assumed to have a particular format that includes the date that they were created / released on. A downloaded stream can have an RSS feed that downloads new files for you. Opening an item in a downloaded stream will tell the OS to open the file in whatever the default program is for that filetype. Completing an item in a downloaded stream does not delete the file; this must be done manually.
+A downloaded stream is a list of locally saved files that this program goes through in order, from oldest to newest. The names of these files are assumed to have a particular format that includes the date that they were created / released on. A downloaded stream can have an RSS feed that downloads new files for you. Opening an item in a downloaded stream will tell the OS to open the file in whatever the default program is for that filetype. Completing an item in a downloaded stream does not delete the file; this must be done manually. The growth of a downloaded stream caused by RSS updating can be limited by setting `ITEM_LIMIT` in `autoConCon.py`, which has a default value of one million.
 
 A linked stream does not store any media data locally. Instead, it is a list of item names and URLs that are saved in the queue.txt files in its directory. It can still have an RSS feed to retrieve new URLs. Opening an item in a linked stream will open the URL in the default web browser.
 
