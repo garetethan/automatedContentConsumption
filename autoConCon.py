@@ -9,14 +9,28 @@ currDate
 currName
 currExtension or currUrl   # If this is the current extension, it should *not* include the period at the beginning of the extension.
 currTime (optional)
-                           # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+			   # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
 ===manual===
 type
-                           # This line is intentionally left blank.
+			   # This line is intentionally left blank.
 currDate
 currName
 currAuthor
-                           # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+			   # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+TODO:
+* Fix immediate error:
+
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python3.6/tkinter/__init__.py", line 1705, in __call__
+    return self.func(*args)
+  File "autoConCon.py", line 143, in updateRSS
+    stream.updateRSS(self.master, progressMessage)
+  File "autoConCon.py", line 389, in updateRSS
+    pubParsed = entry.published_parsed
+UnboundLocalError: local variable 'entry' referenced before assignment
+
+* Downloading fails (I think silently) for some streams, eg Cortex. Fix this.
 '''
 
 # All the graphics.
@@ -36,7 +50,7 @@ import urllib.request
 
 # When downloading using RSS, a downloaded stream will stop downloading when this many items are saved locally. (Prevents using too much disk space.)
 # Once this limit is reached, old files (that have been consumed) must be manually deleted.
-ITEM_LIMIT = 1000000
+ITEM_LIMIT = 30
 
 # Name of directory containing all content data.
 CATEGORY_DIR = 'categories'
@@ -336,6 +350,16 @@ class ContentStream():
 					if itemDate <= latestDownloaded:
 						break
 					i += 1
+
+				# If this stream has been disabled but there are updates now, enable it.
+				with open(f'{streamPath}/info.txt', 'r') as infoFile:
+					infoLines = infoFile.readlines()
+				currentDate = infoLines[2][:-1]
+				if currentDate == END_OF_TIME and entries:
+					pubParsed = entries[i].published_parsed
+					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
+					with open(f'{streamPath}/info.txt', 'w') as infoFile:
+						infoFile.writelines(infoLines)
 				
 				failures = 0
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
@@ -372,7 +396,6 @@ class ContentStream():
 				with open(f'{streamPath}/queue.txt', 'r') as queueFile:
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1][:10] if queueLines else BEGINNING_OF_TIME
-				newItems = ''
 				while i < len(entries):
 					pubParsed = entries[i].published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
@@ -385,21 +408,22 @@ class ContentStream():
 					infoLines = infoFile.readlines()
 				currentDate = infoLines[2][:-1]
 				if currentDate == END_OF_TIME and entries:
-					pubParsed = entry.published_parsed
+					pubParsed = entries[i].published_parsed
 					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
 					with open(f'{streamPath}/info.txt', 'w') as infoFile:
-						infoFile.write(infoLines)
+						infoFile.writelines(infoLines)
 				
+				newItems = []
 				for entry in reversed(entries[:i]):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
 					itemName = re.sub(bannedChars, '_', entry.title)
 					itemUrl = entry.link
-					newItems = f'{newItems}{itemDate};{itemName};{itemUrl}\n'
+					newItems.append(f'{itemDate};{itemName};{itemUrl}\n')
 					
 				# We append to the file so that we don't overwrite any items already there.
 				with open(f'{streamPath}/queue.txt', 'a') as queueFile:
-					queueFile.write(newItems)
+					queueFile.writelines(newItems)
 	def __repr__(self):
 		return f'ContentStream({self.categoryName}, {self.name})'
 	def __str__(self):
@@ -434,12 +458,12 @@ class ContentCategory(tk.Frame):
 		if cStream.currentDate == BEGINNING_OF_TIME:
 			# Does not represent the last item in the list, but that the index of the "next" item is 0.
 			oldIndex = -1
+		# If the stream has been paused.
+		elif cStream.currentDate == END_OF_TIME:
+			oldIndex = len(itemList) - 1
+		# For any stream type.
 		else:
-			if cStream.type == 'downloaded':
-				oldIndex = findItem(itemList, cStream.currentDate, cStream.currentName)	
-			# linked or manual
-			else:
-				oldIndex = findItem(itemList, cStream.currentDate, cStream.currentName)
+			oldIndex = findItem(itemList, cStream.currentDate, cStream.currentName)	
 		
 		# If current is last available.
 		if oldIndex + 2 > len(itemList):
@@ -463,23 +487,24 @@ class ContentCategory(tk.Frame):
 				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(';', maxsplit=2)
 
 		# Update current in info file.
-		infoLines = [cStream.type]
-		infoLines.append(cStream.rss if cStream.rss else '')
-		infoLines.extend((cStream.currentDate, cStream.currentName))
+		infoLines = [f'{cStream.type}\n']
+		infoLines.append(f'{cStream.rss}\n' if cStream.rss else '\n')
+		infoLines.append(f'{cStream.currentDate}\n')
+		infoLines.append(f'{cStream.currentName}\n')
 		if cStream.type == 'downloaded':
-			infoLines.append(cStream.currentExtension)
+			infoLines.append(f'{cStream.currentExtension}\n')
 		elif cStream.type == 'linked':
-			infoLines.append(cStream.currentUrl)
+			infoLines.append(f'{cStream.currentUrl}\n')
 		# manual
 		else:
-			infoLines.append(cStream.currentAuthor)
+			infoLines.append(f'{cStream.currentAuthor}\n')
 		# Here there is a difference between '' and None.
 		if cStream.currentTime != None:
-			infoLines.append('0:0:0')
-		infoLines.append('')
+			infoLines.append('0:0:0\n')
+		infoLines.append('\n')
 			
 		with open(f'{streamPath}/info.txt', 'w') as infoFile:
-			infoFile.writelines([f'{line}\n' for line in infoLines])
+			infoFile.writelines(infoLines)
 		
 		# Update UI.
 		self.grid_forget()
