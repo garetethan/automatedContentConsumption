@@ -50,7 +50,7 @@ RSS feed url (optional; leave a blank line if none)
 yyyy-mm-dd                                # This is the current item date.
 current item name
 current item url
-current time
+current time (optional; leave a blank line if none)
                                           # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
 ```
 
