@@ -33,51 +33,40 @@ I have purposefully designed AutoConCon so that it is easy to see how it works a
 ## Technical details
 ### `info.txt` format
 #### Downloaded
+```
 downloaded
-
 RSS feed url (optional; leave a blank line if none)
-
 yyyy-mm-dd                                # This is the current item date.
-
 current item name
-
 current item file extension               # This should *not* include the period at the beginning of the extension.
-
 current time (optional; leave a blank line if none)
-
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
+```
 
 #### Linked
+```
 linked
-
 RSS feed url (optional; leave a blank line if none)
-
 yyyy-mm-dd                                # This is the current item date.
-
 current item name
-
 current item url
-
 current time
-
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
+```
 
 #### Manual
+```
 manual
-
                                           # This line is intentionally left blank.
-
 yyyy-mm-dd                                # This is the current item date.
-
 current item name
-
 current item author
-
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
+```
 
 ### `queue.txt` format
+```
 yyyy-mm-dd;first item name with semicolons replaced by underscores;first item url
-
 yyyy-mm-dd;second item name;second item url
-
 [...]
+```
