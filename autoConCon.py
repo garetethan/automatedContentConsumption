@@ -40,7 +40,7 @@ import urllib.request
 
 # When downloading using RSS, a downloaded stream will stop downloading when this many items are saved locally. (Prevents using too much disk space.)
 # Once this limit is reached, old files (that have been consumed) must be manually deleted.
-ITEM_LIMIT = 30
+ITEM_LIMIT = 1000000
 
 # Name of directory containing all content data.
 CATEGORY_DIR = 'categories'

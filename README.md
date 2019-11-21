@@ -26,7 +26,10 @@ If you want to manually add items to a downloaded feed (such as those that may b
 For linked and manual streams, just add the date, name, and URL of each item to the queue.txt file (following the syntax conventions there). Note that queues are never sorted by the program, so you can add items wherever you want and the program will respect the order that you use.
 
 ## Design
-I have purposefully designed AutoConCon so that it is easy to see how it works and mess with it. The Python file that runs everything (autoConCon.py) is under seven hundred lines, so hopefully it is easy to understand and navigate should you want to change something. The simplicity of the info.txt files means that you can change the current item in a stream or the RSS feed of a stream manually (without launching the program).
+I have purposefully designed AutoConCon so that it is easy to see how it works and mess with it. The Python file that runs everything (autoConCon.py) is under seven hundred lines and has several customizable global variables at the top, so hopefully it is easy to understand and navigate should you want to change something. The simplicity of the info.txt files means that you can change the current item in a stream or the RSS feed of a stream manually (without launching the program).
+
+### Limiting downloaded streams
+In particular, if you want to limit the number of items that a downloaded stream will download via RSS (to conserve disk space), set the `ITEM_LIMIT` variable near the top of `autoConCon.py`. By default this is set to one million, but I usually set it to 20 or 30 in my personal copy. Once the stream has reached the maximum number of items, old items must be manually deleted before more will be downloaded.
 
 ## Technical details
 ### `info.txt` format
