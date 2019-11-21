@@ -27,3 +27,25 @@ For linked and manual streams, just add the date, name, and URL of each item to 
 
 ## Design
 I have purposefully designed AutoConCon so that it is easy to see how it works and mess with it. The Python file that runs everything (autoConCon.py) is under seven hundred lines, so hopefully it is easy to understand and navigate should you want to change something. The simplicity of the info.txt files means that you can change the current item in a stream or the RSS feed of a stream manually (without launching the program).
+
+## Technical details
+### `info.txt` format
+#### Downloaded and linked streams
+stream type
+RSS feed url (optional)
+current item date (yyyy-mm-dd format)
+current item name
+current file extension or current url     # If this is the current extension, it should *not* include the period at the beginning of the extension.
+currTime (optional)
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+#### Manual streams
+type
+                                          # This line is intentionally left blank.
+current item date (yyyy-mm-dd format)
+current item name
+current item author
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+### `queue.txt` format
+yyyy-mm-dd;first item name with semicolons replaced by underscores;first item url
+yyyy-mm-dd;second item name;second item url
+[...]

@@ -1,36 +1,26 @@
 '''
-=Automated Content Consumption=
+# Automated Content Consumption
 A lightweight feed aggregator that supports manual creation of backlogs.
-==Info File Layout==
-===downloaded / linked===
-type
-RSS (optional)
-currDate
-currName
-currExtension or currUrl   # If this is the current extension, it should *not* include the period at the beginning of the extension.
+## `info.txt` format
+### Downloaded and linked streams
+stream type
+RSS feed url (optional)
+current item date (yyyy-mm-dd format)
+current item name
+current file extension or current url     # If this is the current extension, it should *not* include the period at the beginning of the extension.
 currTime (optional)
-			   # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
-===manual===
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+### Manual streams
 type
-			   # This line is intentionally left blank.
-currDate
-currName
-currAuthor
-			   # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
-TODO:
-* Fix immediate error:
-
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python3.6/tkinter/__init__.py", line 1705, in __call__
-    return self.func(*args)
-  File "autoConCon.py", line 143, in updateRSS
-    stream.updateRSS(self.master, progressMessage)
-  File "autoConCon.py", line 389, in updateRSS
-    pubParsed = entry.published_parsed
-UnboundLocalError: local variable 'entry' referenced before assignment
-
-* Downloading fails (I think silently) for some streams, eg Cortex. Fix this.
+                                          # This line is intentionally left blank.
+current item date (yyyy-mm-dd format)
+current item name
+current item author
+                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+## `queue.txt` format
+yyyy-mm-dd;first item name with semicolons removed / replaced;first item url
+yyyy-mm-dd;second item name;second item url
+[...]
 '''
 
 # All the graphics.
@@ -78,7 +68,6 @@ END_OF_TIME = '9000-01-01'
 
 STREAM_TYPES = ['downloaded', 'linked', 'manual']
 
-# Let's go!
 def main():
 	root = tk.Tk()
 	app = MainMenu(root)
@@ -148,7 +137,7 @@ class MainMenu(tk.Frame):
 		win = tk.Toplevel(self.master)
 		win.title('Updating feeds...')
 		explanation0 = displayMessage(win, text='Updating RSS feeds (for all streams that have a defined RSS feed) in all categories. This may take a while, and, because of the (single-threaded) nature of Python, your OS will probably tell you that this program is not responding. It is probably fine and this program is probably not stuck, but just working hard.', width=POPUP_WIDTH)
-		explanation1 = displayMessage(win, text='If you need to stop in the middle of updating, you will almost certainly stop in the middle of downloading a file (assuming you have at least one downloaded stream). If you pay attention to what stream is updating when you stop, then you can end this process (via Task Manager or something similar) and then manually delete the last media file in that stream (which will only be partially downloaded). This will put things in a stable state so that you can continue updating later.', width=POPUP_WIDTH)
+		explanation1 = displayMessage(win, text='If you need to stop in the middle of updating, you probably stop in the middle of downloading a file (assuming you have at least one downloaded stream). If you pay attention to what stream is updating when you stop, then you can end this process and then manually delete the last media file in that stream (which will only be partially downloaded). This will put things in a stable state so that you can continue updating later.', width=POPUP_WIDTH)
 		streamMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=2)
 		progressMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=3)
 		for category in self.categories:
