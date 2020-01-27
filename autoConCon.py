@@ -73,31 +73,33 @@ def main():
 	app = MainMenu(root)
 	root.title('Automated Content Consumption')
 	root.mainloop()
-	
+
 class MainMenu(tk.Frame):
 	'''Display the main menu. Let the user open (where possible) or complete the current item from any existing category.'''
 	def __init__(self, master):
 		super().__init__(master)
 		self.master = master
-		
+
 		# If the main content directory has not been created yet, treat as first run.
 		if not os.path.isdir(CATEGORY_DIR):
 			os.mkdir(CATEGORY_DIR)
-		
+			self.intro()
+
 		self.displayCategories()
 		self.displayButtons()
 		self.displayMemoBox()
-	
+
 	def intro(self):
-	# Display introductory message.
+		'''Display introductory message.'''
 		win = tk.Toplevel(self.master)
 		win.title('Introduction')
 		with open('README.md', 'r') as introFile:
 			intro = f'Hey, it looks like you might be new here. If so, let me explain how this works.\n{introFile.read()}'
-		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=DEFAULT_FONT, width=50, wrap='word')
+		# A monospace font is used to display the info / queue file formatting correctly.
+		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=('Courier', 12), width=100, wrap='word')
 		introText.insert('end', intro)
 		introText.tag_add('centered', '1.0', 'end')
-		introText.tag_config('centered', justify='center')
+		introText.tag_config('centered', justify='left')
 		# Makes the text not editable.
 		introText.config(state='disabled')
 		display(introText, row=0, column=0)
@@ -108,8 +110,7 @@ class MainMenu(tk.Frame):
 
 	def displayCategories(self):
 		'''Find and draw all existing content categories.'''
-		categoryNames = [entry for entry in sorted(os.listdir(CATEGORY_DIR))
- if os.path.isdir(f'{CATEGORY_DIR}/{entry}')]
+		categoryNames = [entry for entry in sorted(os.listdir(CATEGORY_DIR)) if os.path.isdir(f'{CATEGORY_DIR}/{entry}')]
 		self.categories = []
 		# First column is reserved for buttons.
 		column = 1
@@ -118,26 +119,27 @@ class MainMenu(tk.Frame):
 			category = ContentCategory(self.master, categoryName, column)
 			self.categories.append(category)
 			column += 1
-	
+
 	def displayButtons(self):
 		'''Draw other buttons.'''
 		# Button text and command components (the only things that vary).
 		buttonParts = [('Update all streams that have RSS feeds', self.updateRSS),
-		('Add new category', self.addCategory),
-		('Edit existing category', self.editCategory),
-		('Add new stream', self.addStream),
-		('Edit existing stream', self.editStream),
-		('Refresh', self.refresh),
-		('Quit', self.master.quit)]
+			('Add new category', self.addCategory),
+			('Edit existing category', self.editCategory),
+			('Add new stream', self.addStream),
+			('Edit existing stream', self.editStream),
+			('Refresh', self.refresh),
+			('Quit', self.master.quit)
+		]
 		for i in range(len(buttonParts)):
 			displayButton(self.master, text=buttonParts[i][0], command=buttonParts[i][1], row=i, column=0)
-	
+
 	def updateRSS(self):
 		'''Update all RSS feeds by downloading all new files.'''
 		win = tk.Toplevel(self.master)
 		win.title('Updating feeds...')
-		explanation0 = displayMessage(win, text='Updating RSS feeds (for all streams that have a defined RSS feed) in all categories. This may take a while, and, because of the (single-threaded) nature of Python, your OS will probably tell you that this program is not responding. It is probably fine and this program is probably not stuck, but just working hard.', width=POPUP_WIDTH)
-		explanation1 = displayMessage(win, text='If you need to stop in the middle of updating, you probably stop in the middle of downloading a file (assuming you have at least one downloaded stream). If you pay attention to what stream is updating when you stop, then you can end this process and then manually delete the last media file in that stream (which will only be partially downloaded). This will put things in a stable state so that you can continue updating later.', width=POPUP_WIDTH)
+		displayMessage(win, text='Updating RSS feeds (for all streams that have a defined RSS feed) in all categories. This may take a while, and, because of the (single-threaded) nature of Python, your OS will probably tell you that this program is not responding. It is probably fine and this program is probably not stuck, but just working hard.', width=POPUP_WIDTH)
+		displayMessage(win, text='If you need to stop in the middle of updating, you probably stop in the middle of downloading a file (assuming you have at least one downloaded stream). If you pay attention to what stream is updating when you stop, then you can end this process and then manually delete the last media file in that stream (which will only be partially downloaded). This will put things in a stable state so that you can continue updating later.', width=POPUP_WIDTH)
 		streamMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=2)
 		progressMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=3)
 		for category in self.categories:
@@ -146,7 +148,7 @@ class MainMenu(tk.Frame):
 				stream.updateRSS(self.master, progressMessage)
 		win.destroy()
 		self.refresh()
-	
+
 	def addCategory(self):
 		'''Open a window to let the user specify values to create a new category, and create it.'''
 		win = tk.Toplevel(self.master)
@@ -159,7 +161,7 @@ class MainMenu(tk.Frame):
 			self.refresh()
 			win.destroy()
 		displayButton(win, text='Submit', command=submit)
-	
+
 	def editCategory(self):
 		'''Open a window to let the user specify modifications to an existing category, and modify it.'''
 		win = tk.Toplevel(self.master)
@@ -176,7 +178,7 @@ class MainMenu(tk.Frame):
 			self.refresh()
 			win.destroy()
 		submitButton = displayButton(win, text='Submit', command=submit)
-	
+
 	def addStream(self):
 		'''Open a window to let the user specify values to create a new content stream, and create it.'''
 		win = tk.Toplevel(self.master)
@@ -208,7 +210,7 @@ class MainMenu(tk.Frame):
 			category.draw()
 			win.destroy()
 		submitButton = displayButton(win, text='Submit', command=submit)
-	
+
 	def editStream(self):
 		'''Open a window that lets the user specify modifications to be made to an existing stream, and make them.'''
 		# The first window is just to get the category which the stream to be edited is in. This saves us from having to create a list of all streams in all categories (and then re-finding the chosen stream).
@@ -256,7 +258,7 @@ class MainMenu(tk.Frame):
 				mainWin.destroy()
 			displayButton(mainWin, 'Submit', command=submit)
 		displayButton(categoryWin, 'Proceed', command=proceed)
-	
+
 	def refresh(self):
 		'''Refresh categories so that the user can see their changes. Do not touch the memo box.'''
 		for category in self.categories:
@@ -264,7 +266,7 @@ class MainMenu(tk.Frame):
 		self.displayCategories()
 		self.master.update()
 		self.master.update_idletasks()
-		
+
 	def displayMemoBox(self):
 		'''Display a text entry with a button to save so that the user can save notes for their future selves.'''
 		memoBox = tk.Text(self.master, width=50, height=2, wrap='word', font=DEFAULT_FONT)
@@ -281,14 +283,14 @@ class MainMenu(tk.Frame):
 			with open(MEMO_PATH, 'w') as memoFile:
 				memoFile.write(memoContent)
 		displayButton(self.master, text='Save memo', command=saveMemo, row=13, columnspan=len(self.categories) + 1)
-	
+
 class ContentStream():
 	'''Represent one stream of content, like a podcast or a YouTube channel.'''
 	def __init__(self, categoryName, streamName):
 		self.name = streamName
 		self.categoryName = categoryName
 		streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
-		
+
 		# If the stream has files in it but there is no info file, assume the user created a downloaded stream of files and create an info file for it.
 		# It is possible to make an assumption like this only for downloaded streams, because if a directory contains a queue file, it might be linked or manual.
 		fileList = [entry for entry in sorted(os.listdir(streamPath)) if entry != 'info.txt' and entry != 'queue.txt']
@@ -300,7 +302,7 @@ class ContentStream():
 			infoLines = ['downloaded', '', currentDate, currentName, currentExtension, '']
 			with open(f'{streamPath}/info.txt', 'w+') as infoFile:
 				infoFile.writelines([f'{line}\n' for line in infoLines])
-		
+
 		with open(f'{streamPath}/info.txt', 'r') as infoFile:
 			# Save lines but chop newlines off of end of each line.
 			infoLines = [line[:-1] for line in infoFile.readlines()]
@@ -319,11 +321,12 @@ class ContentStream():
 				self.currentUrl = infoLines[4]
 				if not os.path.isfile(f'{streamPath}/queue.txt'):
 					open(f'{streamPath}/queue.txt', 'w+').close()
-			
+
 			self.currentTime = infoLines[5] if len(infoLines) > 5 else None
 			self.currentAuthor = None
-	
+
 	def updateRSS(self, master, progressMessage):
+		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
 		if self.rss and (self.type == 'downloaded' or self.type == 'linked'):
 			# Used by re.sub() to filter out chars that might make invalid file names or contain ';', which would mess with queue files.
 			bannedChars = r'[^a-zA-Z0-9_\.,\- ]'
@@ -349,7 +352,7 @@ class ContentStream():
 					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
 					with open(f'{streamPath}/info.txt', 'w') as infoFile:
 						infoFile.writelines(infoLines)
-				
+
 				failures = 0
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
 				for j, entry in enumerate(reversed(entries[start:i])):
@@ -378,7 +381,7 @@ class ContentStream():
 							# Give up on this stream.
 							break
 				forceUpdateMessage(master, progressMessage, '')
-					
+
 			# Type is linked.
 			else:
 				# Downloading metadata is fast enough that there is no point trying to update for every item.
@@ -391,7 +394,7 @@ class ContentStream():
 					if itemDate <= latestSaved:
 						break
 					i += 1
-				
+
 				# If this stream has been disabled but there are updates now, enable it.
 				with open(f'{streamPath}/info.txt', 'r') as infoFile:
 					infoLines = infoFile.readlines()
@@ -401,7 +404,7 @@ class ContentStream():
 					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
 					with open(f'{streamPath}/info.txt', 'w') as infoFile:
 						infoFile.writelines(infoLines)
-				
+
 				newItems = []
 				for entry in reversed(entries[:i]):
 					pubParsed = entry.published_parsed
@@ -409,10 +412,11 @@ class ContentStream():
 					itemName = re.sub(bannedChars, '_', entry.title)
 					itemUrl = entry.link
 					newItems.append(f'{itemDate};{itemName};{itemUrl}\n')
-					
+
 				# We append to the file so that we don't overwrite any items already there.
 				with open(f'{streamPath}/queue.txt', 'a') as queueFile:
 					queueFile.writelines(newItems)
+
 	def __repr__(self):
 		return f'ContentStream({self.categoryName}, {self.name})'
 	def __str__(self):
@@ -429,20 +433,21 @@ class ContentCategory(tk.Frame):
 			self.streams.append(ContentStream(self.name, streamName))
 		self.column = column
 		self.draw()
-	
+
 	def completeCurrent(self):
+		'''Advance the current stream by one item.'''
 		cStream = self.currentStream
 		streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
-		
+
 		# Get item list.
 		if cStream.type == 'downloaded':
 			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
-		# linked or manual
+		# linked or manual.
 		else:
 			with open(f'{streamPath}/queue.txt', 'r') as queueFile:
 				# Last line is always '\n', and last char of each line is '\n'.
 				itemList = queueFile.readlines()[:-1][:-1]
-		
+
 		# If there is no current.
 		if cStream.currentDate == BEGINNING_OF_TIME:
 			# Does not represent the last item in the list, but that the index of the "next" item is 0.
@@ -452,10 +457,10 @@ class ContentCategory(tk.Frame):
 			oldIndex = len(itemList) - 1
 		# For any stream type.
 		else:
-			oldIndex = findItem(itemList, cStream.currentDate, cStream.currentName)	
-		
+			oldIndex = next(i for i, item in enumerate(itemList) if item.startswith(f'{cStream.currentDate};{cStream.currentName}'))
+
 		# If current is last available.
-		if oldIndex + 2 > len(itemList):
+		if oldIndex + 1 >= len(itemList):
 			win = tk.Toplevel()
 			win.title('End of stream')
 			displayMessage(win, text='You have reached the end of this stream (until it is updated).', width=POPUP_WIDTH)
@@ -468,10 +473,10 @@ class ContentCategory(tk.Frame):
 			if cStream.type == 'downloaded':
 				currentInfo, cStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
 				cStream.currentDate, cStream.currentName = currentInfo[:10], currentInfo[11:]
-			# linked
+			# linked.
 			elif cStream.type == 'linked':
 				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(';', maxsplit=2)
-			# manual
+			# manual.
 			else:
 				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(';', maxsplit=2)
 
@@ -491,24 +496,24 @@ class ContentCategory(tk.Frame):
 		if cStream.currentTime != None:
 			infoLines.append('0:0:0\n')
 		infoLines.append('\n')
-			
+
 		with open(f'{streamPath}/info.txt', 'w') as infoFile:
 			infoFile.writelines(infoLines)
-		
+
 		# Update UI.
 		self.grid_forget()
 		self.draw()
-	
-	# Not to be confused with display(), which is defined below and works on Tkinter elements.
+
 	def draw(self):
+		'''Draw all of the parts of this category.
+		Not to be confused with display(), which is defined below and works on tkinter elements.'''
 		self.currentStream = min(self.streams, key=lambda f: f.currentDate) if self.streams else None
 		cStream = self.currentStream
 		# ContentCategory extends tk.Frame.
 		display(self, row=0, column=self.column, rowspan=8)
 		# Keep track of what rows have already been used. Putting every element in the first available row (regardless of what the type of the current stream is) means that manual streams will appear shorter than downloaded and linked, and the buttons that all streams have (eg "Open directory") will appear in different rows for different categories. But some users might only use manual streams, and some only downloaded and linked.
 		rowIndex = 0
-		# The only reason why I do not use displayMessage() here is because it forces font=DEFAULT_FONT.
-		self.headerMessage = tk.Message(self.master, text=self.name, font=HEADER_FONT, width=CATEGORY_WIDTH)
+		self.headerMessage = displayMessage(self.master, text=self.name, width=CATEGORY_WIDTH, font=HEADER_FONT)
 		display(self.headerMessage, row=rowIndex, column=self.column)
 		rowIndex += 1
 		if self.streams:
@@ -516,28 +521,23 @@ class ContentCategory(tk.Frame):
 			displayMessage(self.master, text=cStream.name, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
 			if cStream.type == 'manual':
-				# This is when I wish that Python had a ++ operator.
-				displayMessage(self.master, text=cStream.currentName, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-				rowIndex += 1
-				displayMessage(self.master, text=cStream.currentAuthor, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-				rowIndex += 1
-				displayMessage(self.master, text=cStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-				rowIndex += 1
-			
+				for text in (cStream.currentName, cStream.currentAuthor, cStream.currentDate):
+					displayMessage(self.master, text=text, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+					rowIndex += 1
+
 			# downloaded or linked
 			else:
-				displayMessage(self.master, text=cStream.currentName, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-				rowIndex += 1
-				displayMessage(self.master, text=cStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-				rowIndex += 1
-								
+				for text in (cStream.currentName, cStream.currentDate):
+					displayMessage(self.master, text=text, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+					rowIndex += 1
+
 				# Timestamp displaying and saving. Here there is a difference between '' and None.
 				if cStream.currentTime != None:
 					self.currentTimeMessage = displayMessage(self.master, text=cStream.currentTime, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
 					self.timeEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
 					display(self.timeEntry, row=rowIndex, column=self.column)
-					rowIndex +=1
+					rowIndex += 1
 					def saveTime():
 						time = self.timeEntry.get()
 						infoPath = f'{streamPath}/info.txt'
@@ -568,13 +568,13 @@ class ContentCategory(tk.Frame):
 						openMedia(cStream.currentUrl)
 					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
 					rowIndex += 1
-			
+
 			displayButton(self.master, text='Complete', command=self.completeCurrent, row=rowIndex, column=self.column)
 			rowIndex += 1
 			def openInfoFile():
 				openMedia(f'{streamPath}/info.txt')
 			displayButton(self.master, text='Open info file', command=openInfoFile, row=rowIndex, column=self.column)
-			rowIndex +=1
+			rowIndex += 1
 		# We have no streams.
 		else:
 			displayMessage(self.master, text='This category does not contain any streams.', width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
@@ -584,24 +584,25 @@ class ContentCategory(tk.Frame):
 			openMedia(f'{CATEGORY_DIR}/{self.name}')
 		displayButton(self.master, text='Open directory', command=openDirectory, row=rowIndex, column=self.column)
 		rowIndex += 1
-	
+
 	def __repr__(self):
 		return f'ContentCategory({self.master}, {self.name})'
-	
+
 	def __str__(self):
-		return f'ContentStream \'{self.name}\' with {len(self.streams)} streams'
-	
+		return f'ContentCategory \'{self.name}\' with {len(self.streams)} streams'
+
 def display(widget, *args, **kwargs):
-	'''Wrap .grid() to automatically applying padding.'''
+	'''Wrap .grid() to automatically apply padding.'''
 	widget.grid(*args, **kwargs, padx=PADX, pady=PADY)
 
-def displayMessage(master, text, width, *args, **kwargs):
+def displayMessage(master, text, width, font=DEFAULT_FONT, *args, **kwargs):
 	'''Create and display a message.'''
-	message = tk.Message(master, text=text, width=width, font=DEFAULT_FONT, justify='center')
+	message = tk.Message(master, text=text, width=width, font=font, justify='center')
 	display(message, *args, **kwargs)
 	return message
 
 def forceUpdateMessage(master, message, text, *args, **kwargs):
+	'''An attempt to *really* make tkinter remove the old text of a message and display new text.'''
 	gridInfo = message.grid_info()
 	message.grid_forget()
 	message.configure(text=text)
@@ -616,13 +617,13 @@ def displayButton(master, text, command, wraplength=BUTTON_WRAP_LEN, *args, **kw
 	return button
 
 def requestText(win, description=None, width=POPUP_WIDTH):
-		'''Create a Message and an Entry that prompt the user for some text. Return the entry object (so that the caller can use .get() on it to get the submitted value.'''
-		if description:
-			displayMessage(win, text=description, width=width)
-		entry = tk.Entry(win, width=8, font=DEFAULT_FONT)
-		display(entry)
-		return entry
-	
+	'''Create a Message and an Entry that prompt the user for some text. Return the entry object (so that the caller can use .get() on it to get the submitted value.'''
+	if description:
+		displayMessage(win, text=description, width=width)
+	entry = tk.Entry(win, width=8, font=DEFAULT_FONT)
+	display(entry)
+	return entry
+
 def requestSelection(win, description=None, options=None, defaultValue=None, width=POPUP_WIDTH):
 	'''Create a drop-down menu, usually with a message above it, letting the user choose one. options is required, even though it has a default value.'''
 	if not options:
@@ -638,7 +639,7 @@ def requestSelection(win, description=None, options=None, defaultValue=None, wid
 	return choiceVar
 
 def openMedia(filepath):
-	'''Tells the OS to open the file at the specified path in the default program (like double-clicking in a file manager).'''
+	'''Tells the OS to open the file at filepath in the default program, or the web page at filepath (a web address) in the default browser.'''
 	if filepath.startswith('http'):
 		webbrowser.open(filepath)
 	else:
@@ -648,33 +649,6 @@ def openMedia(filepath):
 		else:
 			with open(os.devnull, 'wb') as devnull:
 				subprocess.check_call(['xdg-open', filepath], stdout=devnull, stderr=subprocess.STDOUT)
-
-def findItem(strList, date, name):
-	'''Find item in strList beginning with date and name info (separated by a semicolon). The strList is assumed to be sorted by date, but not necessarily sub-sorted by name. Return index.'''
-	start, end = findItemSubList(strList, date, 0, len(strList))
-	return next(i for i in range(start, end) if strList[i].startswith(f'{date};{name}'))
-
-def findItemSubList(strList, date, start, end):
-	'''Binary search through strList to find the sublist of strings that all begin with date. Assume strList is sorted alphabetically. Return start and end indices of the sublist.'''
-	middleIndex = (start + end) // 2
-	middle = strList[middleIndex]
-	if middle.startswith(date):
-		# Find bounds of sublist.
-		subListStart = middleIndex
-		while subListStart > 0 and strList[subListStart - 1].startswith(date):
-			subListStart -= 1
-		# subListEnd index is exclusive.
-		subListEnd = middleIndex + 1
-		while subListEnd < len(strList) and strList[subListEnd].startswith(date):
-			subListEnd += 1
-		return (subListStart, subListEnd)
-	elif end - start < 1:
-		# We have reached a list of length 1 (or less), and have not found any suitable str.
-		raise ValueError(f'No strs in {strList[:5]}... (only showing first 5 of {len(strList)}) begin with "{date}".')
-	elif date < middle:
-		return findItemSubList(strList, date, start, middleIndex)
-	elif date > middle:
-		return findItemSubList(strList, date, middleIndex + 1, end)
 
 if __name__ == '__main__':
 	main()
