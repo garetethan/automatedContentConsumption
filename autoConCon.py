@@ -336,7 +336,7 @@ class ContentStream():
 			if self.type == 'downloaded':
 				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 				latestDownloaded = alreadyDownloaded[-1][:10] if alreadyDownloaded else BEGINNING_OF_TIME
-				while i < len(entries):
+				while i < len(entries) - 1:
 					pubParsed = entries[i].published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
 					if itemDate <= latestDownloaded:
@@ -388,7 +388,7 @@ class ContentStream():
 				with open(f'{streamPath}/queue.txt', 'r') as queueFile:
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1][:10] if queueLines else BEGINNING_OF_TIME
-				while i < len(entries):
+				while i < len(entries) - 1:
 					pubParsed = entries[i].published_parsed
 					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
 					if itemDate <= latestSaved:
