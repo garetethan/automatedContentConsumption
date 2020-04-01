@@ -197,7 +197,7 @@ class MainMenu(tk.Frame):
 			streamPath = f'{CATEGORY_DIR}/{categoryName}/{name}'
 			if not os.path.isdir(streamPath):
 				os.mkdir(streamPath)
-			infoLines = [streamType, rss, BEGINNING_OF_TIME, 'No name info.', 'No time info.', '']
+			infoLines = (streamType, rss, BEGINNING_OF_TIME, '', '', '')
 			with open(f'{streamPath}/info.txt', 'w+') as infoFile:
 				infoFile.writelines([f'{line}\n' for line in infoLines])
 			if streamType == 'linked' and not os.path.isfile(f'{streamPath}/queue.txt'):
@@ -294,14 +294,17 @@ class ContentStream():
 		# If the stream has files in it but there is no info file, assume the user created a downloaded stream of files and create an info file for it.
 		# It is possible to make an assumption like this only for downloaded streams, because if a directory contains a queue file, it might be linked or manual.
 		fileList = [entry for entry in sorted(os.listdir(streamPath)) if entry != 'info.txt' and entry != 'queue.txt']
-		if not os.path.isfile(f'{streamPath}/info.txt') and fileList:
-			print(f'stream = {self.name}; len(fileList) = {len(fileList)}; fileList[0] = {fileList[0]}')
-			print(f'fileList sample: {fileList[:5]}')
-			currentInfo, currentExtension = fileList[0].rsplit('.', maxsplit=1)
-			currentDate, currentName = currentInfo.rsplit('-', maxsplit=1)
-			infoLines = ['downloaded', '', currentDate, currentName, currentExtension, '']
-			with open(f'{streamPath}/info.txt', 'w+') as infoFile:
-				infoFile.writelines([f'{line}\n' for line in infoLines])
+		try:
+			with open(f'{streamPath}/info.txt', 'r') as infoFile:
+				# Save lines without their newlines.
+				infoLines = [line[:-1] for line in infoFile.readlines()]
+		except FileNotFoundError:
+			if fileList:
+				currentInfo, currentExtension = fileList[0].rsplit('.', maxsplit=1)
+				currentDate, currentName = currentInfo.rsplit('-', maxsplit=1)
+				infoLines = ('downloaded', '', currentDate, currentName, currentExtension, '')
+				with open(f'{streamPath}/info.txt', 'x') as infoFile:
+					infoFile.writelines([f'{line}\n' for line in infoLines])
 
 		with open(f'{streamPath}/info.txt', 'r') as infoFile:
 			# Save lines but chop newlines off of end of each line.
@@ -338,7 +341,7 @@ class ContentStream():
 				latestDownloaded = alreadyDownloaded[-1][:10] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
 					pubParsed = entries[i].published_parsed
-					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
+					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					if itemDate <= latestDownloaded:
 						break
 					i += 1
@@ -349,7 +352,7 @@ class ContentStream():
 				currentDate = infoLines[2][:-1]
 				if currentDate == END_OF_TIME and entries:
 					pubParsed = entries[i].published_parsed
-					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
+					infoLines[2] = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n'
 					with open(f'{streamPath}/info.txt', 'w') as infoFile:
 						infoFile.writelines(infoLines)
 
@@ -357,16 +360,17 @@ class ContentStream():
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
 				for j, entry in enumerate(reversed(entries[start:i])):
 					pubParsed = entry.published_parsed
-					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
+					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					itemName = re.sub(bannedChars, '_', entry.title)
 					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i - start}).')
 					try:
 						downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
 					except StopIteration:
-						print(f'My method for finding the link to download media files has failed for the item \'{itemName}\' in {self.name}.')
+						print(f'My method for finding the link to download media files has failed for the item \'{itemName}\' in \'{self.name}\'.', file=sys.stderr)
 						failures += 1
 						if failures >= 3:
 							# Give up on this stream.
+							print(f'I am giving up on updating \'{self.name}\'.', file=sys.stderr)
 							break
 						else:
 							continue
@@ -375,7 +379,7 @@ class ContentStream():
 					try:
 						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate};{itemName}.{itemExt}')
 					except urllib.error.URLError:
-						print(f'Unable to download <{downloadUrl}> in {self.name}. Check your internet connection.')
+						print(f'Unable to download <{downloadUrl}> in {self.name}. Check your internet connection.', file=sys.stderr)
 						failures += 1
 						if failures >= 3:
 							# Give up on this stream.
@@ -390,7 +394,7 @@ class ContentStream():
 					latestSaved = queueLines[-1][:10] if queueLines else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
 					pubParsed = entries[i].published_parsed
-					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
+					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					if itemDate <= latestSaved:
 						break
 					i += 1
@@ -401,14 +405,14 @@ class ContentStream():
 				currentDate = infoLines[2][:-1]
 				if currentDate == END_OF_TIME and entries:
 					pubParsed = entries[i].published_parsed
-					infoLines[2] = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}\n'
+					infoLines[2] = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n'
 					with open(f'{streamPath}/info.txt', 'w') as infoFile:
 						infoFile.writelines(infoLines)
 
 				newItems = []
 				for entry in reversed(entries[:i]):
 					pubParsed = entry.published_parsed
-					itemDate = f'{pubParsed[0]}-{str(pubParsed[1]).zfill(2)}-{str(pubParsed[2]).zfill(2)}'
+					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					itemName = re.sub(bannedChars, '_', entry.title)
 					itemUrl = entry.link
 					newItems.append(f'{itemDate};{itemName};{itemUrl}\n')
@@ -423,7 +427,7 @@ class ContentStream():
 		return f'ContentStream \'{self.name}\' in category \'{self.categoryName}\''
 
 class ContentCategory(tk.Frame):
-	'''Represent a category of streams like 'Videos' or 'Favourites'. Can contain multiple streams of different types.'''
+	'''Represent a category of streams like 'Videos' or 'Favourites'. May contain multiple streams of different types.'''
 	def __init__(self, master=None, name=None, column=0):
 		super().__init__(master)
 		self.name = name
@@ -449,7 +453,7 @@ class ContentCategory(tk.Frame):
 				itemList = queueFile.readlines()[:-1][:-1]
 
 		# If there is no current.
-		if cStream.currentDate == BEGINNING_OF_TIME:
+		if not cStream.currentDate or cStream.currentDate == BEGINNING_OF_TIME:
 			# Does not represent the last item in the list, but that the index of the "next" item is 0.
 			oldIndex = -1
 		# If the stream has been paused.
@@ -527,12 +531,17 @@ class ContentCategory(tk.Frame):
 
 			# downloaded or linked
 			else:
-				for text in (cStream.currentName, cStream.currentDate):
-					displayMessage(self.master, text=text, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-					rowIndex += 1
+				if cStream.currentName:
+					displayMessage(self.master, text=cStream.currentName, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+				else:
+					displayMessage(self.master, text='Click \'Current\' to advance to first item', width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+				rowIndex += 1
+				if cStream.currentDate:
+					displayMessage(self.master, text=cStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+				rowIndex += 1
 
 				# Timestamp displaying and saving. Here there is a difference between '' and None.
-				if cStream.currentTime != None:
+				if cStream.currentTime:
 					self.currentTimeMessage = displayMessage(self.master, text=cStream.currentTime, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
 					self.timeEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
