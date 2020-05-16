@@ -50,6 +50,7 @@ MEMO_PATH = 'memo.txt'
 
 CATEGORY_WIDTH = 200
 POPUP_WIDTH = 500
+ENTRY_WIDTH = 32
 
 # Font defaults.
 DEFAULT_FONT = ('Helvetica', 12)
@@ -332,7 +333,6 @@ class ContentStream():
 		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
 		if self.rss and (self.type == 'downloaded' or self.type == 'linked'):
 			# Used by re.sub() to filter out chars that might make invalid file names or contain ';', which would mess with queue files.
-			bannedChars = r'[^a-zA-Z0-9_\.,\- ]'
 			entries = feedparser.parse(self.rss).entries
 			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
@@ -361,7 +361,7 @@ class ContentStream():
 				for j, entry in enumerate(reversed(entries[start:i])):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					itemName = re.sub(bannedChars, '_', entry.title)
+					itemName = entry.title.replace('/', '_')
 					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i - start}).')
 					try:
 						downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
@@ -413,7 +413,7 @@ class ContentStream():
 				for entry in reversed(entries[:i]):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					itemName = re.sub(bannedChars, '_', entry.title)
+					itemName = entry.title.replace(';', '_')
 					itemUrl = entry.link
 					newItems.append(f'{itemDate};{itemName};{itemUrl}\n')
 
@@ -477,12 +477,14 @@ class ContentCategory(tk.Frame):
 			if cStream.type == 'downloaded':
 				currentInfo, cStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
 				cStream.currentDate, cStream.currentName = currentInfo[:10], currentInfo[11:]
-			# linked.
 			elif cStream.type == 'linked':
 				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(';', maxsplit=2)
 			# manual.
 			else:
 				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(';', maxsplit=2)
+		# Here there is a difference between '' and None.
+		if cStream.currentTime != None:
+			cStream.currentTime = '0:00'
 
 		# Update current in info file.
 		infoLines = [f'{cStream.type}\n']
@@ -496,9 +498,8 @@ class ContentCategory(tk.Frame):
 		# manual
 		else:
 			infoLines.append(f'{cStream.currentAuthor}\n')
-		# Here there is a difference between '' and None.
 		if cStream.currentTime != None:
-			infoLines.append('0:0:0\n')
+			infoLines.append(f'{cStream.currentTime}\n')
 		infoLines.append('\n')
 
 		with open(f'{streamPath}/info.txt', 'w') as infoFile:
@@ -544,7 +545,7 @@ class ContentCategory(tk.Frame):
 				if cStream.currentTime:
 					self.currentTimeMessage = displayMessage(self.master, text=cStream.currentTime, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
-					self.timeEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
+					self.timeEntry = tk.Entry(self.master, width=ENTRY_WIDTH, font=DEFAULT_FONT)
 					display(self.timeEntry, row=rowIndex, column=self.column)
 					rowIndex += 1
 					def saveTime():
@@ -629,7 +630,7 @@ def requestText(win, description=None, width=POPUP_WIDTH):
 	'''Create a Message and an Entry that prompt the user for some text. Return the entry object (so that the caller can use .get() on it to get the submitted value.'''
 	if description:
 		displayMessage(win, text=description, width=width)
-	entry = tk.Entry(win, width=8, font=DEFAULT_FONT)
+	entry = tk.Entry(win, width=ENTRY_WIDTH, font=DEFAULT_FONT)
 	display(entry)
 	return entry
 
@@ -657,7 +658,7 @@ def openMedia(filepath):
 		# Assume os.name == 'posix'
 		else:
 			with open(os.devnull, 'wb') as devnull:
-				subprocess.check_call(['xdg-open', filepath], stdout=devnull, stderr=subprocess.STDOUT)
+				subprocess.run(['xdg-open', filepath], stdout=devnull, stderr=subprocess.STDERR)
 
 if __name__ == '__main__':
 	main()
