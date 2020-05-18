@@ -37,6 +37,8 @@ import webbrowser
 import feedparser
 # File downloading.
 import urllib.request
+# Just for sys.stderr
+import sys
 
 # When downloading using RSS, a downloaded stream will stop downloading when this many items are saved locally. (Prevents using too much disk space.)
 # Once this limit is reached, old files (that have been consumed) must be manually deleted.
@@ -48,9 +50,15 @@ CATEGORY_DIR = 'categories'
 # Name of memo file (where memo box data is stored).
 MEMO_PATH = 'memo.txt'
 
+# The string used to separate the date, name, and (when applicable) URL of an item in a queue.
+SEP = ';'
+
+# Only dates strictly after the BEGINNING_OF_TIME and strictly before the END_OF_TIME are supported.
+BEGINNING_OF_TIME = '1000-01-01'
+END_OF_TIME = '9000-01-01'
+
 CATEGORY_WIDTH = 200
 POPUP_WIDTH = 500
-ENTRY_WIDTH = 32
 
 # Font defaults.
 DEFAULT_FONT = ('Helvetica', 12)
@@ -62,10 +70,6 @@ PADY = 6
 
 # Default tk.Button wraplength value.
 BUTTON_WRAP_LEN = 200
-
-# Only dates strictly after the BEGINNING_OF_TIME and strictly before the END_OF_TIME are supported.
-BEGINNING_OF_TIME = '1000-01-01'
-END_OF_TIME = '9000-01-01'
 
 STREAM_TYPES = ['downloaded', 'linked', 'manual']
 
@@ -94,10 +98,10 @@ class MainMenu(tk.Frame):
 		'''Display introductory message.'''
 		win = tk.Toplevel(self.master)
 		win.title('Introduction')
-		with open('README.md', 'r') as introFile:
-			intro = f'Hey, it looks like you might be new here. If so, let me explain how this works.\n{introFile.read()}'
+		with open('README.md') as introFile:
+			intro = 'Hey, it looks like you might be new here. If so, let me explain how this works.\n' + introFile.read()
 		# A monospace font is used to display the info / queue file formatting correctly.
-		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=('Courier', 12), width=100, wrap='word')
+		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=('Courier', DEFAULT_FONT[1]), width=100, wrap='word')
 		introText.insert('end', intro)
 		introText.tag_add('centered', '1.0', 'end')
 		introText.tag_config('centered', justify='left')
@@ -138,9 +142,9 @@ class MainMenu(tk.Frame):
 	def updateRSS(self):
 		'''Update all RSS feeds by downloading all new files.'''
 		win = tk.Toplevel(self.master)
-		win.title('Updating feeds...')
-		displayMessage(win, text='Updating RSS feeds (for all streams that have a defined RSS feed) in all categories. This may take a while, and, because of the (single-threaded) nature of Python, your OS will probably tell you that this program is not responding. It is probably fine and this program is probably not stuck, but just working hard.', width=POPUP_WIDTH)
-		displayMessage(win, text='If you need to stop in the middle of updating, you probably stop in the middle of downloading a file (assuming you have at least one downloaded stream). If you pay attention to what stream is updating when you stop, then you can end this process and then manually delete the last media file in that stream (which will only be partially downloaded). This will put things in a stable state so that you can continue updating later.', width=POPUP_WIDTH)
+		win.title('Updating streams')
+		displayMessage(win, text='Updating RSS feeds (for all streams that have a defined RSS feed) in all categories. This is likely to take a while if any of these streams are downloaded. Because of the (single-threaded) nature of Python, your OS will probably tell you that this program is not responding. It is probably fine and not stuck, but just working hard.', width=POPUP_WIDTH)
+		displayMessage(win, text='If you need to stop in the middle of updating, you will likely stop in the middle of downloading a file (assuming you have at least one downloaded stream). If you pay attention to what stream is updating when you stop, then you can close this window (which halts updating) and then manually delete the last media file in that stream (which will only be partially downloaded). This will put things in a clean, stable state so that you can continue updating later.', width=POPUP_WIDTH)
 		streamMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=2)
 		progressMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=3)
 		for category in self.categories:
@@ -199,10 +203,14 @@ class MainMenu(tk.Frame):
 			if not os.path.isdir(streamPath):
 				os.mkdir(streamPath)
 			infoLines = (streamType, rss, BEGINNING_OF_TIME, '', '', '')
-			with open(f'{streamPath}/info.txt', 'w+') as infoFile:
-				infoFile.writelines([f'{line}\n' for line in infoLines])
-			if streamType == 'linked' and not os.path.isfile(f'{streamPath}/queue.txt'):
-				open(f'{streamPath}/queue.txt', 'w').close()
+			with open(streamPath + '/info.txt', 'w+') as infoFile:
+				infoFile.writelines([line + '\n' for line in infoLines])
+			if streamType == 'linked':
+				# Create the queue file if it does not exist yet.
+				try:
+					open(streamPath + '/queue.txt', 'x').close()
+				except FileExistsError:
+					pass
 			category = next(c for c in self.categories if c.name == categoryName)
 			newStream = ContentStream(category.name, name)
 			# Remove old category info (so that it doesn't appear in the background).
@@ -245,11 +253,11 @@ class MainMenu(tk.Frame):
 				os.rename(f'{CATEGORY_DIR}/{oldCategoryName}/{oldStreamName}', newStreamPath)
 				# Update RSS.
 				if newRss:
-					with open(f'{newStreamPath}/info.txt', 'r') as infoFile:
+					with open(newStreamPath + '/info.txt') as infoFile:
 						infoLines = infoFile.readlines()
 					if oldStream.type != 'manual':
-						infoLines[1] = f'{newRss}\n'
-						with open(f'{newStreamPath}/info.txt', 'w') as infoFile:
+						infoLines[1] = newRss + '\n'
+						with open(newStreamPath + '/info.txt', 'w') as infoFile:
 							infoFile.writelines(infoLines)
 						oldStream.rss = newRss
 				# Move stream obect into new category's list and rename stream object.
@@ -273,7 +281,7 @@ class MainMenu(tk.Frame):
 		memoBox = tk.Text(self.master, width=50, height=2, wrap='word', font=DEFAULT_FONT)
 		display(memoBox, row=12, column=0, columnspan=len(self.categories) + 1)
 		if os.path.isfile(MEMO_PATH):
-			with open(MEMO_PATH, 'r') as memoFile:
+			with open(MEMO_PATH) as memoFile:
 				memoContent = memoFile.read()
 			memoBox.insert('1.0', memoContent)
 		# Memo file does not exist.
@@ -290,25 +298,10 @@ class ContentStream():
 	def __init__(self, categoryName, streamName):
 		self.name = streamName
 		self.categoryName = categoryName
+
 		streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
-
-		# If the stream has files in it but there is no info file, assume the user created a downloaded stream of files and create an info file for it.
-		# It is possible to make an assumption like this only for downloaded streams, because if a directory contains a queue file, it might be linked or manual.
-		fileList = [entry for entry in sorted(os.listdir(streamPath)) if entry != 'info.txt' and entry != 'queue.txt']
-		try:
-			with open(f'{streamPath}/info.txt', 'r') as infoFile:
-				# Save lines without their newlines.
-				infoLines = [line[:-1] for line in infoFile.readlines()]
-		except FileNotFoundError:
-			if fileList:
-				currentInfo, currentExtension = fileList[0].rsplit('.', maxsplit=1)
-				currentDate, currentName = currentInfo.rsplit('-', maxsplit=1)
-				infoLines = ('downloaded', '', currentDate, currentName, currentExtension, '')
-				with open(f'{streamPath}/info.txt', 'x') as infoFile:
-					infoFile.writelines([f'{line}\n' for line in infoLines])
-
-		with open(f'{streamPath}/info.txt', 'r') as infoFile:
-			# Save lines but chop newlines off of end of each line.
+		with open(streamPath + '/info.txt') as infoFile:
+			# Save lines but chop newlines off the end of each line.
 			infoLines = [line[:-1] for line in infoFile.readlines()]
 		# Save values which are constant across all stream types.
 		self.type, self.currentDate, self.currentName = infoLines[0], infoLines[2], infoLines[3]
@@ -323,22 +316,19 @@ class ContentStream():
 			# Type is linked.
 			else:
 				self.currentUrl = infoLines[4]
-				if not os.path.isfile(f'{streamPath}/queue.txt'):
-					open(f'{streamPath}/queue.txt', 'w+').close()
-
 			self.currentTime = infoLines[5] if len(infoLines) > 5 else None
 			self.currentAuthor = None
 
 	def updateRSS(self, master, progressMessage):
 		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
 		if self.rss and (self.type == 'downloaded' or self.type == 'linked'):
-			# Used by re.sub() to filter out chars that might make invalid file names or contain ';', which would mess with queue files.
+			# Used by re.sub() to filter out chars that might make invalid file names or contain SEP, which would mess with queue files.
 			entries = feedparser.parse(self.rss).entries
 			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
 			if self.type == 'downloaded':
 				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
-				latestDownloaded = alreadyDownloaded[-1][:10] if alreadyDownloaded else BEGINNING_OF_TIME
+				latestDownloaded = alreadyDownloaded[-1].split(SEP, maxsplit=1)[0] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
 					pubParsed = entries[i].published_parsed
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
@@ -347,13 +337,13 @@ class ContentStream():
 					i += 1
 
 				# If this stream has been disabled but there are updates now, enable it.
-				with open(f'{streamPath}/info.txt', 'r') as infoFile:
+				with open(streamPath + '/info.txt') as infoFile:
 					infoLines = infoFile.readlines()
 				currentDate = infoLines[2][:-1]
-				if currentDate == END_OF_TIME and entries:
-					pubParsed = entries[i].published_parsed
+				if currentDate == END_OF_TIME and i:
+					pubParsed = entries[i - 1].published_parsed
 					infoLines[2] = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n'
-					with open(f'{streamPath}/info.txt', 'w') as infoFile:
+					with open(streamPath + '/info.txt', 'w') as infoFile:
 						infoFile.writelines(infoLines)
 
 				failures = 0
@@ -361,7 +351,7 @@ class ContentStream():
 				for j, entry in enumerate(reversed(entries[start:i])):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					itemName = entry.title.replace('/', '_')
+					itemName = entry.title.replace('/', '_').replace(SEP, '_')
 					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i - start}).')
 					try:
 						downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
@@ -375,9 +365,9 @@ class ContentStream():
 						else:
 							continue
 					# Attempt to get file extension from downloadUrl.
-					itemExt = re.sub(r'.*\.([a-zA-Z0-9]*).*', r'\1', downloadUrl)
+					itemExt = re.search(r'\.(\w+)([?#].*)?$', downloadUrl)[1]
 					try:
-						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate};{itemName}.{itemExt}')
+						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate}{SEP}{itemName}.{itemExt}')
 					except urllib.error.URLError:
 						print(f'Unable to download <{downloadUrl}> in {self.name}. Check your internet connection.', file=sys.stderr)
 						failures += 1
@@ -389,9 +379,9 @@ class ContentStream():
 			# Type is linked.
 			else:
 				# Downloading metadata is fast enough that there is no point trying to update for every item.
-				with open(f'{streamPath}/queue.txt', 'r') as queueFile:
+				with open(streamPath + '/queue.txt') as queueFile:
 					queueLines = queueFile.readlines()
-					latestSaved = queueLines[-1][:10] if queueLines else BEGINNING_OF_TIME
+					latestSaved = queueLines[-1].split(SEP, maxsplit=1)[0] if queueLines else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
 					pubParsed = entries[i].published_parsed
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
@@ -400,25 +390,25 @@ class ContentStream():
 					i += 1
 
 				# If this stream has been disabled but there are updates now, enable it.
-				with open(f'{streamPath}/info.txt', 'r') as infoFile:
+				with open(streamPath + '/info.txt') as infoFile:
 					infoLines = infoFile.readlines()
 				currentDate = infoLines[2][:-1]
-				if currentDate == END_OF_TIME and entries:
-					pubParsed = entries[i].published_parsed
+				if currentDate == END_OF_TIME and i:
+					pubParsed = entries[i - 1].published_parsed
 					infoLines[2] = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n'
-					with open(f'{streamPath}/info.txt', 'w') as infoFile:
+					with open(streamPath + '/info.txt', 'w') as infoFile:
 						infoFile.writelines(infoLines)
 
 				newItems = []
 				for entry in reversed(entries[:i]):
 					pubParsed = entry.published_parsed
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					itemName = entry.title.replace(';', '_')
+					itemName = entry.title.replace(SEP, '_')
 					itemUrl = entry.link
-					newItems.append(f'{itemDate};{itemName};{itemUrl}\n')
+					newItems.append(f'{itemDate}{SEP}{itemName}{SEP}{itemUrl}\n')
 
 				# We append to the file so that we don't overwrite any items already there.
-				with open(f'{streamPath}/queue.txt', 'a') as queueFile:
+				with open(streamPath + '/queue.txt', 'a') as queueFile:
 					queueFile.writelines(newItems)
 
 	def __repr__(self):
@@ -448,7 +438,7 @@ class ContentCategory(tk.Frame):
 			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 		# linked or manual.
 		else:
-			with open(f'{streamPath}/queue.txt', 'r') as queueFile:
+			with open(streamPath + '/queue.txt') as queueFile:
 				# Last line is always '\n', and last char of each line is '\n'.
 				itemList = queueFile.readlines()[:-1][:-1]
 
@@ -461,7 +451,7 @@ class ContentCategory(tk.Frame):
 			oldIndex = len(itemList) - 1
 		# For any stream type.
 		else:
-			oldIndex = next(i for i, item in enumerate(itemList) if item.startswith(f'{cStream.currentDate};{cStream.currentName}'))
+			oldIndex = next(i for i, item in enumerate(itemList) if item.startswith(f'{cStream.currentDate}{SEP}{cStream.currentName}'))
 
 		# If current is last available.
 		if oldIndex + 1 >= len(itemList):
@@ -478,10 +468,10 @@ class ContentCategory(tk.Frame):
 				currentInfo, cStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
 				cStream.currentDate, cStream.currentName = currentInfo[:10], currentInfo[11:]
 			elif cStream.type == 'linked':
-				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(';', maxsplit=2)
+				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(SEP, maxsplit=2)
 			# manual.
 			else:
-				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(';', maxsplit=2)
+				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(SEP, maxsplit=2)
 		# Here there is a difference between '' and None.
 		if cStream.currentTime != None:
 			cStream.currentTime = '0:00'
@@ -502,7 +492,7 @@ class ContentCategory(tk.Frame):
 			infoLines.append(f'{cStream.currentTime}\n')
 		infoLines.append('\n')
 
-		with open(f'{streamPath}/info.txt', 'w') as infoFile:
+		with open(streamPath + '/info.txt', 'w') as infoFile:
 			infoFile.writelines(infoLines)
 
 		# Update UI.
@@ -545,13 +535,13 @@ class ContentCategory(tk.Frame):
 				if cStream.currentTime:
 					self.currentTimeMessage = displayMessage(self.master, text=cStream.currentTime, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
-					self.timeEntry = tk.Entry(self.master, width=ENTRY_WIDTH, font=DEFAULT_FONT)
+					self.timeEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
 					display(self.timeEntry, row=rowIndex, column=self.column)
 					rowIndex += 1
 					def saveTime():
 						time = self.timeEntry.get()
-						infoPath = f'{streamPath}/info.txt'
-						with open(infoPath, 'r') as infoFile:
+						infoPath = streamPath + '/info.txt'
+						with open(infoPath) as infoFile:
 							lines = infoFile.readlines()
 						lines[5] = time
 						with open(infoPath, 'w') as infoFile:
@@ -569,7 +559,7 @@ class ContentCategory(tk.Frame):
 							displayMessage(win, text='This stream does not yet contain any media items to open.', width=POPUP_WIDTH)
 							displayButton(win, text='Close', command=win.destroy)
 						else:
-							openMedia(f'{streamPath}/{cStream.currentDate};{cStream.currentName}.{cStream.currentExtension}')
+							openMedia(f'{streamPath}/{cStream.currentDate}{SEP}{cStream.currentName}.{cStream.currentExtension}')
 					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
 					rowIndex += 1
 				# Button to open items for linked.
@@ -582,7 +572,7 @@ class ContentCategory(tk.Frame):
 			displayButton(self.master, text='Complete', command=self.completeCurrent, row=rowIndex, column=self.column)
 			rowIndex += 1
 			def openInfoFile():
-				openMedia(f'{streamPath}/info.txt')
+				openMedia(streamPath + '/info.txt')
 			displayButton(self.master, text='Open info file', command=openInfoFile, row=rowIndex, column=self.column)
 			rowIndex += 1
 		# We have no streams.
@@ -630,7 +620,7 @@ def requestText(win, description=None, width=POPUP_WIDTH):
 	'''Create a Message and an Entry that prompt the user for some text. Return the entry object (so that the caller can use .get() on it to get the submitted value.'''
 	if description:
 		displayMessage(win, text=description, width=width)
-	entry = tk.Entry(win, width=ENTRY_WIDTH, font=DEFAULT_FONT)
+	entry = tk.Entry(win, width=32, font=DEFAULT_FONT)
 	display(entry)
 	return entry
 
@@ -657,8 +647,9 @@ def openMedia(filepath):
 			os.startfile(filepath)
 		# Assume os.name == 'posix'
 		else:
-			with open(os.devnull, 'wb') as devnull:
-				subprocess.run(['xdg-open', filepath], stdout=devnull, stderr=subprocess.STDERR)
+			process = subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+			if process.returncode != 0:
+				print(f'Failed to open \'{filepath}\'. The program that failed to open it said:\n{process.stderr.decode()}')
 
 if __name__ == '__main__':
 	main()
