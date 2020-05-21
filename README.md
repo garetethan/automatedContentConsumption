@@ -31,42 +31,49 @@ For linked and manual streams, just add the date, name, and URL of each item to 
 I have purposefully designed AutoConCon so that it is easy to see how it works and mess with it. The Python file that runs everything (`autoConCon.py`) is under seven hundred lines and has several customizable global variables at the top, so hopefully it is easy to understand and navigate should you want to change something. The simplicity of the `info.txt` files means that you can change the current item in a stream or the RSS feed of a stream manually (without launching the program).
 
 ## Technical details
-### `info.txt` format
+### `info.txt` examples
+Note that comments cannot actually be included in the info files as shown.
 #### Downloaded
 ```
 downloaded
-RSS feed url (optional; leave a blank line if none)
-yyyy-mm-dd                                # This is the current item date.
-current item name
-current item file extension               # This should *not* include the period at the beginning of the extension.
-current time (optional; leave a blank line if none)
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
+http://nodumbqs.libsyn.com/rss      # RSS feed (may be a blank line).
+2019-11-30                          # Date of publication of current item.
+072 - How Did Humans Find Hawaii?   # Name of current item.
+mp3                                 # File extension of the current item. Should *not* include the period at the beginning of the extension.
+0:00                                # Your progress through the current item (any string).
+                                    # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
 ```
 
 #### Linked
 ```
 linked
-RSS feed url (optional; leave a blank line if none)
-yyyy-mm-dd                                # This is the current item date.
-current item name
-current item url
-current time (optional; leave a blank line if none)
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
+https://www.youtube.com/feeds/videos.xml?channel_id=UCyNdC48md19x0thA_rv2a8g   # RSS feed (may be a blank line).
+2016-11-30                                                                     # Date of publication of current item.
+I Do (original song)                                                           # Name of current item.
+https://www.youtube.com/watch?v=EoSqKWr3nnc                                    # URL of current item.
+0:00                                                                           # Your progress through the current item (any string).
+                                                                               # Intentional blank line.
 ```
 
 #### Manual
 ```
 manual
-                                          # This line is intentionally left blank.
-yyyy-mm-dd                                # This is the current item date.
-current item name
-current item author
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is a newline.
+1950-10-16                             # Current item date.
+The Lion, the Witch and the Wardrobe   # Current item name.
+p 31                                   # Current item progress.
+                                       # Intentional blank line.
 ```
 
 ### `queue.txt` format
+#### Linked
 ```
-yyyy-mm-dd;first item name with semicolons replaced by underscores;first item url
+yyyy-mm-dd;first item name with semicolons removed / replaced;first item url
 yyyy-mm-dd;second item name;second item url
+[...]
+```
+#### Manual
+```
+yyyy-mm-dd;first item name with semicolons removed / replaced
+yyyy-mm-dd;second item name
 [...]
 ```

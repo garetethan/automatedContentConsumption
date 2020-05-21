@@ -7,38 +7,38 @@ stream type
 RSS feed url (optional)
 current item date (yyyy-mm-dd format)
 current item name
-current file extension or current url     # If this is the current extension, it should *not* include the period at the beginning of the extension.
-currTime (optional)
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+current item file extension or current url     # If this is the current extension, it should *not* include the period at the beginning of the extension.
+current item progress
+                                               # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is `\n`.
 ### Manual streams
 type
-                                          # This line is intentionally left blank.
 current item date (yyyy-mm-dd format)
 current item name
-current item author
-                                          # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is '\n'.
+current item progress
+                                               # This line is intentionally left blank so that when the file is read with readlines(), the last character of every line is `\n`.
 ## `queue.txt` format
 yyyy-mm-dd;first item name with semicolons removed / replaced;first item url
 yyyy-mm-dd;second item name;second item url
 [...]
 '''
 
-# All the graphics.
-import tkinter as tk
+import enum
+# RSS metadata downloading.
+import feedparser
 # Used to get the contents of directories, and determine whether something is a file or a directory.
 import os
 # Only needed for re.sub().
 import re
 # Used to tell the OS to open media files.
 import subprocess
-# Used to tell the OS to open webpages.
-import webbrowser
-# RSS metadata downloading.
-import feedparser
-# File downloading.
-import urllib.request
 # Just for sys.stderr
 import sys
+# All the graphics.
+import tkinter as tk
+# File downloading.
+import urllib.request
+# Used to tell the OS to open webpages.
+import webbrowser
 
 # When downloading using RSS, a downloaded stream will stop downloading when this many items are saved locally. (Prevents using too much disk space.)
 # Once this limit is reached, old files (that have been consumed) must be manually deleted.
@@ -71,7 +71,17 @@ PADY = 6
 # Default tk.Button wraplength value.
 BUTTON_WRAP_LEN = 200
 
-STREAM_TYPES = ['downloaded', 'linked', 'manual']
+class StreamType(enum.Enum):
+	DOWNLOADED = 'downloaded'
+	LINKED = 'linked'
+	MANUAL = 'manual'
+	
+	# Allow comparison with strs read from files.
+	def __eq__(self, other):
+		if isinstance(other, StreamType):
+			return self.value == other.value
+		else:
+			return self.value == other
 
 def main():
 	root = tk.Tk()
@@ -86,10 +96,11 @@ class MainMenu(tk.Frame):
 		self.master = master
 
 		# If the main content directory has not been created yet, treat as first run.
-		if not os.path.isdir(CATEGORY_DIR):
+		try:
 			os.mkdir(CATEGORY_DIR)
 			self.intro()
-
+		except FileExistsError:
+			pass
 		self.displayCategories()
 		self.displayButtons()
 		self.displayMemoBox()
@@ -105,7 +116,7 @@ class MainMenu(tk.Frame):
 		introText.insert('end', intro)
 		introText.tag_add('centered', '1.0', 'end')
 		introText.tag_config('centered', justify='left')
-		# Makes the text not editable.
+		# Makes the text uneditable.
 		introText.config(state='disabled')
 		display(introText, row=0, column=0)
 		scroller = tk.Scrollbar(win, command=introText.yview)
@@ -194,18 +205,26 @@ class MainMenu(tk.Frame):
 		categoryVar = requestSelection(win, 'Category to add to:', [category.name for category in self.categories])
 		rssVar = requestText(win, 'RSS feed (optional and only for downloaded or linked streams):')
 		def submit():
-			# We can't use 'type' as a variable name because it is a Python keyword.
 			streamType = typeVar.get()
 			name = nameVar.get()
 			categoryName = categoryVar.get()
 			rss = rssVar.get()
 			streamPath = f'{CATEGORY_DIR}/{categoryName}/{name}'
-			if not os.path.isdir(streamPath):
+			try:
 				os.mkdir(streamPath)
-			infoLines = (streamType, rss, BEGINNING_OF_TIME, '', '', '')
-			with open(streamPath + '/info.txt', 'w+') as infoFile:
-				infoFile.writelines([line + '\n' for line in infoLines])
-			if streamType == 'linked':
+			except FileExistsError:
+				pass
+			if streamType == StreamType.MANUAL:
+				infoLines = (streamType, BEGINNING_OF_TIME, '', '')
+			# Downloaded or linked.
+			else:
+				infoLines = (streamType, rss, BEGINNING_OF_TIME, '', '', '')
+			try:
+				with open(streamPath + '/info.txt', 'x') as infoFile:
+					infoFile.writelines(line + '\n' for line in infoLines)
+			except FileExistsError:
+				pass
+			if streamType == StreamType.LINKED:
 				# Create the queue file if it does not exist yet.
 				try:
 					open(streamPath + '/queue.txt', 'x').close()
@@ -244,22 +263,15 @@ class MainMenu(tk.Frame):
 				newCategory = next(category for category in self.categories if category.name == newCategoryName)
 				oldStreamName = oldStreamVar.get()
 				oldStreamIndex, oldStream = next((i, stream) for (i, stream) in enumerate(oldCategory.streams) if stream.name == oldStreamName)
-				newStreamName = newStreamVar.get()
-				if not newStreamName:
-					newStreamName = oldStreamName
+				newStreamName = newStreamVar.get() or oldStreamName
 				newRss = rssVar.get()
 				# Move stream directory.
 				newStreamPath = f'{CATEGORY_DIR}/{newCategoryName}/{newStreamName}'
 				os.rename(f'{CATEGORY_DIR}/{oldCategoryName}/{oldStreamName}', newStreamPath)
 				# Update RSS.
-				if newRss:
-					with open(newStreamPath + '/info.txt') as infoFile:
-						infoLines = infoFile.readlines()
-					if oldStream.type != 'manual':
-						infoLines[1] = newRss + '\n'
-						with open(newStreamPath + '/info.txt', 'w') as infoFile:
-							infoFile.writelines(infoLines)
-						oldStream.rss = newRss
+				if newRss and oldStream.type != StreamType.MANUAL:
+					oldStream.rss = newRss
+					overwriteLineInFile(newStreamPath + '/info.txt', 1, newRss + '\n')
 				# Move stream obect into new category's list and rename stream object.
 				newCategory.streams.append(oldCategory.streams.pop(oldStreamIndex))
 				oldStream.name = newStreamName
@@ -302,31 +314,30 @@ class ContentStream():
 		streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 		with open(streamPath + '/info.txt') as infoFile:
 			# Save lines but chop newlines off the end of each line.
-			infoLines = [line[:-1] for line in infoFile.readlines()]
-		# Save values which are constant across all stream types.
-		self.type, self.currentDate, self.currentName = infoLines[0], infoLines[2], infoLines[3]
-		if self.type == 'manual':
-			self.currentAuthor = infoLines[4]
-			self.rss, self.currentExtension, self.currentUrl, self.currentTime = None, None, None, None
-		# Type is either downloaded or linked.
+			infoLines = tuple(line[:-1] for line in infoFile.readlines())
+		self.type = infoLines[0]
+		if self.type == StreamType.MANUAL:
+			self.currentDate, self.currentName, self.currentProgress = infoLines[1:4]
+		# Downloaded or linked.
 		else:
 			self.rss = infoLines[1] if infoLines[1] else None
-			if self.type == 'downloaded':
+			self.currentDate = infoLines[2]
+			self.currentName = infoLines[3]
+			if self.type == StreamType.DOWNLOADED:
 				self.currentExtension = infoLines[4]
-			# Type is linked.
+			# Linked.
 			else:
 				self.currentUrl = infoLines[4]
-			self.currentTime = infoLines[5] if len(infoLines) > 5 else None
-			self.currentAuthor = None
+			self.currentProgress = infoLines[5]
 
 	def updateRSS(self, master, progressMessage):
 		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
-		if self.rss and (self.type == 'downloaded' or self.type == 'linked'):
+		if self.rss and (self.type == StreamType.DOWNLOADED or self.type == StreamType.LINKED):
 			# Used by re.sub() to filter out chars that might make invalid file names or contain SEP, which would mess with queue files.
 			entries = feedparser.parse(self.rss).entries
 			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
-			if self.type == 'downloaded':
+			if self.type == StreamType.DOWNLOADED:
 				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 				latestDownloaded = alreadyDownloaded[-1].split(SEP, maxsplit=1)[0] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
@@ -337,14 +348,9 @@ class ContentStream():
 					i += 1
 
 				# If this stream has been disabled but there are updates now, enable it.
-				with open(streamPath + '/info.txt') as infoFile:
-					infoLines = infoFile.readlines()
-				currentDate = infoLines[2][:-1]
-				if currentDate == END_OF_TIME and i:
+				if self.currentDate == END_OF_TIME and i:
 					pubParsed = entries[i - 1].published_parsed
-					infoLines[2] = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n'
-					with open(streamPath + '/info.txt', 'w') as infoFile:
-						infoFile.writelines(infoLines)
+					overwriteLineInFile(streamPath + '/info.txt', 2, f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n')
 
 				failures = 0
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
@@ -390,14 +396,9 @@ class ContentStream():
 					i += 1
 
 				# If this stream has been disabled but there are updates now, enable it.
-				with open(streamPath + '/info.txt') as infoFile:
-					infoLines = infoFile.readlines()
-				currentDate = infoLines[2][:-1]
-				if currentDate == END_OF_TIME and i:
+				if self.currentDate == END_OF_TIME and i:
 					pubParsed = entries[i - 1].published_parsed
-					infoLines[2] = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n'
-					with open(streamPath + '/info.txt', 'w') as infoFile:
-						infoFile.writelines(infoLines)
+					overwriteLineInFile(streamPath + '/info.txt', 2, f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n')
 
 				newItems = []
 				for entry in reversed(entries[:i]):
@@ -413,8 +414,15 @@ class ContentStream():
 
 	def __repr__(self):
 		return f'ContentStream({self.categoryName}, {self.name})'
+
 	def __str__(self):
 		return f'ContentStream \'{self.name}\' in category \'{self.categoryName}\''
+	
+	def __lt__(self, other):
+		return self.currentDate < other.currentDate
+
+	def __gt__(self, other):
+		return self.currentDate > other.currentDate
 
 class ContentCategory(tk.Frame):
 	'''Represent a category of streams like 'Videos' or 'Favourites'. May contain multiple streams of different types.'''
@@ -434,13 +442,13 @@ class ContentCategory(tk.Frame):
 		streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
 
 		# Get item list.
-		if cStream.type == 'downloaded':
+		if cStream.type == StreamType.DOWNLOADED:
 			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 		# linked or manual.
 		else:
 			with open(streamPath + '/queue.txt') as queueFile:
-				# Last line is always '\n', and last char of each line is '\n'.
-				itemList = queueFile.readlines()[:-1][:-1]
+				# Last char of each line is '\n'.
+				itemList = [line[:-1] for line in queueFile.readlines()]
 
 		# If there is no current.
 		if not cStream.currentDate or cStream.currentDate == BEGINNING_OF_TIME:
@@ -464,36 +472,31 @@ class ContentCategory(tk.Frame):
 		# There is a next one.
 		else:
 			# Update stream object.
-			if cStream.type == 'downloaded':
+			if cStream.type == StreamType.DOWNLOADED:
 				currentInfo, cStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
-				cStream.currentDate, cStream.currentName = currentInfo[:10], currentInfo[11:]
-			elif cStream.type == 'linked':
+				cStream.currentDate, cStream.currentName = currentInfo.split(SEP, maxsplit=1)
+			elif cStream.type == StreamType.LINKED:
 				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(SEP, maxsplit=2)
 			# manual.
 			else:
-				cStream.currentDate, cStream.currentName, cStream.currentAuthor = itemList[oldIndex + 1].split(SEP, maxsplit=2)
-		# Here there is a difference between '' and None.
-		if cStream.currentTime != None:
-			cStream.currentTime = '0:00'
+				cStream.currentDate, cStream.currentName = itemList[oldIndex + 1].split(SEP, maxsplit=2)
+		cStream.currentProgress = '0'
 
 		# Update current in info file.
-		infoLines = [f'{cStream.type}\n']
-		infoLines.append(f'{cStream.rss}\n' if cStream.rss else '\n')
-		infoLines.append(f'{cStream.currentDate}\n')
-		infoLines.append(f'{cStream.currentName}\n')
-		if cStream.type == 'downloaded':
-			infoLines.append(f'{cStream.currentExtension}\n')
-		elif cStream.type == 'linked':
-			infoLines.append(f'{cStream.currentUrl}\n')
-		# manual
-		else:
-			infoLines.append(f'{cStream.currentAuthor}\n')
-		if cStream.currentTime != None:
-			infoLines.append(f'{cStream.currentTime}\n')
-		infoLines.append('\n')
+		infoLines = [cStream.type]
+		if cStream.type != StreamType.MANUAL:
+			infoLines.append(cStream.rss if cStream.rss else '')
+		infoLines.append(cStream.currentDate)
+		infoLines.append(cStream.currentName)
+		if cStream.type == StreamType.DOWNLOADED:
+			infoLines.append(cStream.currentExtension)
+		elif cStream.type == StreamType.LINKED:
+			infoLines.append(cStream.currentUrl)
+		infoLines.append(cStream.currentProgress)
+		infoLines.append('')
 
 		with open(streamPath + '/info.txt', 'w') as infoFile:
-			infoFile.writelines(infoLines)
+			infoFile.writelines(line + '\n' for line in infoLines)
 
 		# Update UI.
 		self.grid_forget()
@@ -502,72 +505,63 @@ class ContentCategory(tk.Frame):
 	def draw(self):
 		'''Draw all of the parts of this category.
 		Not to be confused with display(), which is defined below and works on tkinter elements.'''
-		self.currentStream = min(self.streams, key=lambda f: f.currentDate) if self.streams else None
-		cStream = self.currentStream
 		# ContentCategory extends tk.Frame.
 		display(self, row=0, column=self.column, rowspan=8)
 		# Keep track of what rows have already been used. Putting every element in the first available row (regardless of what the type of the current stream is) means that manual streams will appear shorter than downloaded and linked, and the buttons that all streams have (eg "Open directory") will appear in different rows for different categories. But some users might only use manual streams, and some only downloaded and linked.
 		rowIndex = 0
-		self.headerMessage = displayMessage(self.master, text=self.name, width=CATEGORY_WIDTH, font=HEADER_FONT)
-		display(self.headerMessage, row=rowIndex, column=self.column)
+		displayMessage(self.master, text=self.name, width=CATEGORY_WIDTH, font=HEADER_FONT, row=rowIndex, column=self.column)
 		rowIndex += 1
 		if self.streams:
+			self.currentStream = min(self.streams)
+			cStream = self.currentStream
 			streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
 			displayMessage(self.master, text=cStream.name, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
-			if cStream.type == 'manual':
-				for text in (cStream.currentName, cStream.currentAuthor, cStream.currentDate):
+			if cStream.type == StreamType.MANUAL:
+				for text in (cStream.currentName, cStream.currentDate):
 					displayMessage(self.master, text=text, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
 
-			# downloaded or linked
+			# Downloaded or linked.
 			else:
 				if cStream.currentName:
 					displayMessage(self.master, text=cStream.currentName, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 				else:
 					displayMessage(self.master, text='Click \'Current\' to advance to first item', width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 				rowIndex += 1
-				if cStream.currentDate:
-					displayMessage(self.master, text=cStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+				displayMessage(self.master, text=cStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 				rowIndex += 1
 
-				# Timestamp displaying and saving. Here there is a difference between '' and None.
-				if cStream.currentTime:
-					self.currentTimeMessage = displayMessage(self.master, text=cStream.currentTime, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
-					rowIndex += 1
-					self.timeEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
-					display(self.timeEntry, row=rowIndex, column=self.column)
-					rowIndex += 1
-					def saveTime():
-						time = self.timeEntry.get()
-						infoPath = streamPath + '/info.txt'
-						with open(infoPath) as infoFile:
-							lines = infoFile.readlines()
-						lines[5] = time
-						with open(infoPath, 'w') as infoFile:
-							infoFile.writelines(lines)
-						# Make update visible to user.
-						self.currentTimeMessage.configure(text=time)
-					displayButton(self.master, text='Save time', command=saveTime, row=rowIndex, column=self.column)
-					rowIndex += 1
-				# Button to open items for downloaded.
-				if cStream.type == 'downloaded':
-					def openCurrent():
-						if cStream.currentDate == BEGINNING_OF_TIME:
-							win = tk.Toplevel()
-							win.title('Empty stream')
-							displayMessage(win, text='This stream does not yet contain any media items to open.', width=POPUP_WIDTH)
-							displayButton(win, text='Close', command=win.destroy)
-						else:
+			# Progress displaying and saving. Here there is a difference between '' and None.
+			self.currentProgressMessage = displayMessage(self.master, text=cStream.currentProgress, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+			rowIndex += 1
+			self.progressEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
+			display(self.progressEntry, row=rowIndex, column=self.column)
+			rowIndex += 1
+			def saveProgress():
+				progress = self.progressEntry.get()
+				infoPath = streamPath + '/info.txt'
+				overwriteLineInFile(infoPath, 3 if cStream.type == StreamType.MANUAL else 5, progress)
+				# Make update visible to user.
+				self.currentProgressMessage.configure(text=progress)
+			displayButton(self.master, text='Save progress', command=saveProgress, row=rowIndex, column=self.column)
+			rowIndex += 1
+
+			if cStream.type != StreamType.MANUAL:
+				def openCurrent():
+					if cStream.currentDate == BEGINNING_OF_TIME:
+						win = tk.Toplevel()
+						win.title('Empty stream')
+						displayMessage(win, text='This stream does not yet contain any media items to open.', width=POPUP_WIDTH)
+						displayButton(win, text='Close', command=win.destroy)
+					else:
+						if cStream.type == StreamType.DOWNLOADED:
 							openMedia(f'{streamPath}/{cStream.currentDate}{SEP}{cStream.currentName}.{cStream.currentExtension}')
-					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
-					rowIndex += 1
-				# Button to open items for linked.
-				else:
-					def openCurrent():
-						openMedia(cStream.currentUrl)
-					displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
-					rowIndex += 1
+						# Linked.
+						else:
+							openMedia(cStream.currentUrl)
+				displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
+				rowIndex += 1
 
 			displayButton(self.master, text='Complete', command=self.completeCurrent, row=rowIndex, column=self.column)
 			rowIndex += 1
@@ -575,15 +569,11 @@ class ContentCategory(tk.Frame):
 				openMedia(streamPath + '/info.txt')
 			displayButton(self.master, text='Open info file', command=openInfoFile, row=rowIndex, column=self.column)
 			rowIndex += 1
+
 		# We have no streams.
 		else:
 			displayMessage(self.master, text='This category does not contain any streams.', width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
-		# Whether we have streams or not.
-		def openDirectory():
-			openMedia(f'{CATEGORY_DIR}/{self.name}')
-		displayButton(self.master, text='Open directory', command=openDirectory, row=rowIndex, column=self.column)
-		rowIndex += 1
 
 	def __repr__(self):
 		return f'ContentCategory({self.master}, {self.name})'
@@ -647,9 +637,14 @@ def openMedia(filepath):
 			os.startfile(filepath)
 		# Assume os.name == 'posix'
 		else:
-			process = subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-			if process.returncode != 0:
-				print(f'Failed to open \'{filepath}\'. The program that failed to open it said:\n{process.stderr.decode()}')
+			subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
+
+def overwriteLineInFile(filepath, index, line):
+	with open(filepath) as fileHandle:
+		lines = fileHandle.readlines()
+	lines[index] = line
+	with open(filepath, 'w') as fileHandle:
+		fileHandle.writelines(lines)
 
 if __name__ == '__main__':
 	main()
