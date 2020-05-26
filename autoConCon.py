@@ -27,7 +27,6 @@ import enum
 import feedparser
 # Used to get the contents of directories, and determine whether something is a file or a directory.
 import os
-# Only needed for re.sub().
 import re
 # Used to tell the OS to open media files.
 import subprocess
@@ -332,16 +331,15 @@ class ContentStream():
 
 	def updateRSS(self, master, progressMessage):
 		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
-		if self.rss and (self.type == StreamType.DOWNLOADED or self.type == StreamType.LINKED):
-			# Used by re.sub() to filter out chars that might make invalid file names or contain SEP, which would mess with queue files.
-			entries = feedparser.parse(self.rss).entries
+		if self.type != StreamType.MANUAL and self.rss:
+			entries = feedparser.parse(self.rss)['entries']
 			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
 			if self.type == StreamType.DOWNLOADED:
 				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 				latestDownloaded = alreadyDownloaded[-1].split(SEP, maxsplit=1)[0] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
-					pubParsed = entries[i].published_parsed
+					pubParsed = self.findParsedDate(entries[i])
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					if itemDate <= latestDownloaded:
 						break
@@ -349,13 +347,13 @@ class ContentStream():
 
 				# If this stream has been disabled but there are updates now, enable it.
 				if self.currentDate == END_OF_TIME and i:
-					pubParsed = entries[i - 1].published_parsed
+					pubParsed = self.findParsedDate(entries[i - 1])
 					overwriteLineInFile(streamPath + '/info.txt', 2, f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n')
 
 				failures = 0
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
 				for j, entry in enumerate(reversed(entries[start:i])):
-					pubParsed = entry.published_parsed
+					pubParsed = self.findParsedDate(entry)
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					itemName = entry.title.replace('/', '_').replace(SEP, '_')
 					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i - start}).')
@@ -371,7 +369,11 @@ class ContentStream():
 						else:
 							continue
 					# Attempt to get file extension from downloadUrl.
-					itemExt = re.search(r'\.(\w+)([?#].*)?$', downloadUrl)[1]
+					extMatch = re.search(r'\.(\w+)([?#].*)?$', downloadUrl)
+					if extMatch:
+						itemExt = extMatch[1]
+					else:
+						continue
 					try:
 						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate}{SEP}{itemName}.{itemExt}')
 					except urllib.error.URLError:
@@ -389,7 +391,7 @@ class ContentStream():
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1].split(SEP, maxsplit=1)[0] if queueLines else BEGINNING_OF_TIME
 				while i < len(entries) - 1:
-					pubParsed = entries[i].published_parsed
+					pubParsed = self.findParsedDate(entries[i])
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					if itemDate <= latestSaved:
 						break
@@ -397,20 +399,29 @@ class ContentStream():
 
 				# If this stream has been disabled but there are updates now, enable it.
 				if self.currentDate == END_OF_TIME and i:
-					pubParsed = entries[i - 1].published_parsed
+					pubParsed = self.findParsedDate(entries[i - 1])
 					overwriteLineInFile(streamPath + '/info.txt', 2, f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n')
 
 				newItems = []
 				for entry in reversed(entries[:i]):
-					pubParsed = entry.published_parsed
+					pubParsed = self.findParsedDate(entry)
 					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
 					itemName = entry.title.replace(SEP, '_')
 					itemUrl = entry.link
 					newItems.append(f'{itemDate}{SEP}{itemName}{SEP}{itemUrl}\n')
 
 				# We append to the file so that we don't overwrite any items already there.
-				with open(streamPath + '/queue.txt', 'a') as queueFile:
+				with open(streamPath + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
+
+	@staticmethod
+	def findParsedDate(entry):
+		for key in ['published_parsed', 'updated_parsed']:
+			try:
+				return entry[key]
+			except KeyError:
+				continue
+		raise ValueError('Failed to find the date for an entry.')
 
 	def __repr__(self):
 		return f'ContentStream({self.categoryName}, {self.name})'
