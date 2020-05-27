@@ -648,7 +648,7 @@ def openMedia(filepath):
 			os.startfile(filepath)
 		# Assume os.name == 'posix'
 		else:
-			subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
+			subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, check=True)
 
 def overwriteLineInFile(filepath, index, line):
 	with open(filepath) as fileHandle:
