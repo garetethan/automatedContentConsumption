@@ -270,7 +270,7 @@ class MainMenu(tk.Frame):
 				# Update RSS.
 				if newRss and oldStream.type != StreamType.MANUAL:
 					oldStream.rss = newRss
-					overwriteLineInFile(newStreamPath + '/info.txt', 1, newRss + '\n')
+					overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRss + '\n'})
 				# Move stream obect into new category's list and rename stream object.
 				newCategory.streams.append(oldCategory.streams.pop(oldStreamIndex))
 				oldStream.name = newStreamName
@@ -291,13 +291,12 @@ class MainMenu(tk.Frame):
 		'''Display a text entry with a button to save so that the user can save notes for their future selves.'''
 		memoBox = tk.Text(self.master, width=50, height=2, wrap='word', font=DEFAULT_FONT)
 		display(memoBox, row=12, column=0, columnspan=len(self.categories) + 1)
-		if os.path.isfile(MEMO_PATH):
+		try:
 			with open(MEMO_PATH) as memoFile:
 				memoContent = memoFile.read()
 			memoBox.insert('1.0', memoContent)
-		# Memo file does not exist.
-		else:
-			open(MEMO_PATH, 'w').close()
+		except FileNotFoundError:
+			open(MEMO_PATH, 'x').close()
 		def saveMemo():
 			memoContent = memoBox.get('1.0', 'end-1c')
 			with open(MEMO_PATH, 'w') as memoFile:
@@ -345,11 +344,6 @@ class ContentStream():
 						break
 					i += 1
 
-				# If this stream has been disabled but there are updates now, enable it.
-				if self.currentDate == END_OF_TIME and i:
-					pubParsed = self.findParsedDate(entries[i - 1])
-					overwriteLineInFile(streamPath + '/info.txt', 2, f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n')
-
 				failures = 0
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
 				for j, entry in enumerate(reversed(entries[start:i])):
@@ -384,6 +378,12 @@ class ContentStream():
 							break
 				forceUpdateMessage(master, progressMessage, '')
 
+				# If this stream has been disabled but there are updates now, enable it.
+				if self.currentDate == END_OF_TIME and i:
+					firstNewItem = entries[i - 1]
+					pubParsed = self.findParsedDate(firstNewItem)
+					overwriteLinesInFile(streamPath + '/info.txt', {2: f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n', 3: firstNewItem.title.replace('/', '_').replace(SEP, '_')})
+
 			# Type is linked.
 			else:
 				# Downloading metadata is fast enough that there is no point trying to update for every item.
@@ -397,11 +397,6 @@ class ContentStream():
 						break
 					i += 1
 
-				# If this stream has been disabled but there are updates now, enable it.
-				if self.currentDate == END_OF_TIME and i:
-					pubParsed = self.findParsedDate(entries[i - 1])
-					overwriteLineInFile(streamPath + '/info.txt', 2, f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n')
-
 				newItems = []
 				for entry in reversed(entries[:i]):
 					pubParsed = self.findParsedDate(entry)
@@ -413,6 +408,12 @@ class ContentStream():
 				# We append to the file so that we don't overwrite any items already there.
 				with open(streamPath + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
+
+				# If this stream has been disabled but there are updates now, enable it.
+				if self.currentDate == END_OF_TIME and i:
+					firstNewItem = entries[i - 1]
+					pubParsed = self.findParsedDate(firstNewItem)
+					overwriteLinesInFile(streamPath + '/info.txt', {2: f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n', 3: firstNewItem.title.replace(SEP, '_')})
 
 	@staticmethod
 	def findParsedDate(entry):
@@ -552,7 +553,7 @@ class ContentCategory(tk.Frame):
 			def saveProgress():
 				progress = self.progressEntry.get()
 				infoPath = streamPath + '/info.txt'
-				overwriteLineInFile(infoPath, 3 if cStream.type == StreamType.MANUAL else 5, progress)
+				overwriteLinesInFile(infoPath, {3 if cStream.type == StreamType.MANUAL else 5: progress})
 				# Make update visible to user.
 				self.currentProgressMessage.configure(text=progress)
 			displayButton(self.master, text='Save progress', command=saveProgress, row=rowIndex, column=self.column)
@@ -650,10 +651,11 @@ def openMedia(filepath):
 		else:
 			subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, check=True)
 
-def overwriteLineInFile(filepath, index, line):
+def overwriteLinesInFile(filepath, replacements):
 	with open(filepath) as fileHandle:
 		lines = fileHandle.readlines()
-	lines[index] = line
+	for index, newLine in replacements.items():
+		lines[index] = newLine
 	with open(filepath, 'w') as fileHandle:
 		fileHandle.writelines(lines)
 
