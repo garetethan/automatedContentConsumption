@@ -198,7 +198,7 @@ class MainMenu(tk.Frame):
 		'''Open a window to let the user specify values to create a new content stream, and create it.'''
 		win = tk.Toplevel(self.master)
 		win.title('Add new stream')
-		typeVar = requestSelection(win, 'Type of new stream:', STREAM_TYPES)
+		typeVar = requestSelection(win, 'Type of new stream:', tuple(type_.value for type_ in StreamType))
 		displayButton(win, text='Remind me what the different types are', command=self.intro)
 		nameVar = requestText(win, 'Name of new stream:')
 		categoryVar = requestSelection(win, 'Category to add to:', [category.name for category in self.categories])
