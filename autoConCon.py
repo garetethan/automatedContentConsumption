@@ -28,6 +28,7 @@ import feedparser
 # Used to get the contents of directories, and determine whether something is a file or a directory.
 import os
 import re
+import shutil
 # Used to tell the OS to open media files.
 import subprocess
 # Just for sys.stderr
@@ -41,7 +42,7 @@ import webbrowser
 
 # When downloading using RSS, a downloaded stream will stop downloading when this many items are saved locally. (Prevents using too much disk space.)
 # Once this limit is reached, old files (that have been consumed) must be manually deleted.
-ITEM_LIMIT = 1000000
+ITEM_LIMIT = 10 ** 6
 
 # Name of directory containing all content data.
 CATEGORY_DIR = 'categories'
@@ -51,6 +52,10 @@ MEMO_PATH = 'memo.txt'
 
 # The string used to separate the date, name, and (when applicable) URL of an item in a queue.
 SEP = ';'
+
+# Replace all non-ASCII characters in item names with underscores when saving new items.
+# This helps prevent encoding issues when swapping OSes.
+FORCE_ASCII = False
 
 # Only dates strictly after the BEGINNING_OF_TIME and strictly before the END_OF_TIME are supported.
 BEGINNING_OF_TIME = '1000-01-01'
@@ -270,7 +275,7 @@ class MainMenu(tk.Frame):
 				# Update RSS.
 				if newRss and oldStream.type != StreamType.MANUAL:
 					oldStream.rss = newRss
-					overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRss + '\n'})
+					overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRss})
 				# Move stream obect into new category's list and rename stream object.
 				newCategory.streams.append(oldCategory.streams.pop(oldStreamIndex))
 				oldStream.name = newStreamName
@@ -337,52 +342,22 @@ class ContentStream():
 			if self.type == StreamType.DOWNLOADED:
 				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
 				latestDownloaded = alreadyDownloaded[-1].split(SEP, maxsplit=1)[0] if alreadyDownloaded else BEGINNING_OF_TIME
-				while i < len(entries) - 1:
-					pubParsed = self.findParsedDate(entries[i])
-					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					if itemDate <= latestDownloaded:
-						break
+				while i < len(entries) - 1 and self.parseDate(entries[i]) > latestDownloaded:
 					i += 1
 
 				failures = 0
 				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
-				for j, entry in enumerate(reversed(entries[start:i])):
-					pubParsed = self.findParsedDate(entry)
-					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					itemName = entry.title.replace('/', '_').replace(SEP, '_')
-					forceUpdateMessage(master, progressMessage, f'Downloading \'{itemName}\' ({j + 1} / {i - start}).')
-					try:
-						downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
-					except StopIteration:
-						print(f'My method for finding the link to download media files has failed for the item \'{itemName}\' in \'{self.name}\'.', file=sys.stderr)
-						failures += 1
-						if failures >= 3:
-							# Give up on this stream.
-							print(f'I am giving up on updating \'{self.name}\'.', file=sys.stderr)
-							break
-						else:
-							continue
-					# Attempt to get file extension from downloadUrl.
-					extMatch = re.search(r'\.(\w+)([?#].*)?$', downloadUrl)
-					if extMatch:
-						itemExt = extMatch[1]
-					else:
-						continue
-					try:
-						urllib.request.urlretrieve(downloadUrl, f'{streamPath}/{itemDate}{SEP}{itemName}.{itemExt}')
-					except urllib.error.URLError:
-						print(f'Unable to download <{downloadUrl}> in {self.name}. Check your internet connection.', file=sys.stderr)
-						failures += 1
-						if failures >= 3:
-							# Give up on this stream.
-							break
-				forceUpdateMessage(master, progressMessage, '')
-
 				# If this stream has been disabled but there are updates now, enable it.
 				if self.currentDate == END_OF_TIME and i:
 					firstNewItem = entries[i - 1]
-					pubParsed = self.findParsedDate(firstNewItem)
-					overwriteLinesInFile(streamPath + '/info.txt', {2: f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n', 3: firstNewItem.title.replace('/', '_').replace(SEP, '_')})
+					overwriteLinesInFile(streamPath + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: self.parseUrlAndExtension(firstNewItem)[1]})
+
+				for j, entry in enumerate(reversed(entries[start:i])):
+					name = self.parseName(entry)
+					downloadUrl, extension = self.parseUrlAndExtension(entry)
+					forceUpdateMessage(master, progressMessage, f'Downloading \'{name}\' ({j + 1} / {i - start}).')
+					with urllib.request.urlopen(downloadUrl) as response, open(f'{streamPath}/{self.parseDate(entry)}{SEP}{name}.{extension}', 'xb') as outFile:
+						shutil.copyfileobj(response, outFile)
 
 			# Type is linked.
 			else:
@@ -390,39 +365,52 @@ class ContentStream():
 				with open(streamPath + '/queue.txt') as queueFile:
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1].split(SEP, maxsplit=1)[0] if queueLines else BEGINNING_OF_TIME
-				while i < len(entries) - 1:
-					pubParsed = self.findParsedDate(entries[i])
-					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					if itemDate <= latestSaved:
-						break
+				while i < len(entries) - 1 and self.parseDate(entries[i]) > latestSaved:
 					i += 1
 
-				newItems = []
-				for entry in reversed(entries[:i]):
-					pubParsed = self.findParsedDate(entry)
-					itemDate = f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
-					itemName = entry.title.replace(SEP, '_')
-					itemUrl = entry.link
-					newItems.append(f'{itemDate}{SEP}{itemName}{SEP}{itemUrl}\n')
+				# If this stream has been disabled but there are updates now, enable it.
+				if self.currentDate == END_OF_TIME and i:
+					firstNewItem = entries[i - 1]
+					overwriteLinesInFile(streamPath + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: firstNewItem.link})
+
+				newItems = [f'{self.parseDate(entry)}{SEP}{self.parseName(entry)}{SEP}{entry.link}\n' for entry in reversed(entries[:i])]
 
 				# We append to the file so that we don't overwrite any items already there.
 				with open(streamPath + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
 
-				# If this stream has been disabled but there are updates now, enable it.
-				if self.currentDate == END_OF_TIME and i:
-					firstNewItem = entries[i - 1]
-					pubParsed = self.findParsedDate(firstNewItem)
-					overwriteLinesInFile(streamPath + '/info.txt', {2: f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}\n', 3: firstNewItem.title.replace(SEP, '_')})
-
 	@staticmethod
-	def findParsedDate(entry):
+	def parseDate(entry):
 		for key in ['published_parsed', 'updated_parsed']:
 			try:
-				return entry[key]
+				pubParsed = entry[key]
 			except KeyError:
 				continue
-		raise ValueError('Failed to find the date for an entry.')
+			return f'{pubParsed[0]}-{pubParsed[1]:02}-{pubParsed[2]:02}'
+		raise LookupError(f'Stream {self.categoryName}/{self.name}: Failed to find the date for an entry.')
+
+	def parseName(self, entry):
+		if self.type == StreamType.DOWNLOADED:
+			pattern = f'[{SEP}/]'
+		# Linked.
+		else:
+			pattern = SEP
+		if FORCE_ASCII:
+			pattern += r'|[^\x00-\x7F]'
+		return re.sub(pattern, '_', entry.title)
+
+	@staticmethod
+	def parseUrlAndExtension(entry):
+		'''Finds and parses tne download URL and extension of an entry. Only for downloaded streams.'''
+		try:
+			downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
+		except StopIteration:
+			raise LookupError(f'Stream {self.categoryName}/{self.name}: My method for finding the link to download media files has failed for the item \'{itemName}\'.')
+		match = re.search(r'\.(\w+)([?#].*)?$', downloadUrl)
+		if match:
+			return (downloadUrl, match[1])
+		else:
+			raise ValueError(f'Stream {self.categoryName}/{self.name}: Unable to extract the file extension from <{downloadUrl}>.')
 
 	def __repr__(self):
 		return f'ContentStream({self.categoryName}, {self.name})'
@@ -655,7 +643,7 @@ def overwriteLinesInFile(filepath, replacements):
 	with open(filepath) as fileHandle:
 		lines = fileHandle.readlines()
 	for index, newLine in replacements.items():
-		lines[index] = newLine
+		lines[index] = newLine + '\n'
 	with open(filepath, 'w') as fileHandle:
 		fileHandle.writelines(lines)
 
