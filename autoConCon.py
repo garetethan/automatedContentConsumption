@@ -379,8 +379,7 @@ class ContentStream():
 				with open(streamPath + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
 
-	@staticmethod
-	def parseDate(entry):
+	def parseDate(self, entry):
 		for key in ['published_parsed', 'updated_parsed']:
 			try:
 				pubParsed = entry[key]
@@ -399,13 +398,12 @@ class ContentStream():
 			pattern += r'|[^\x00-\x7F]'
 		return re.sub(pattern, '_', entry.title)
 
-	@staticmethod
-	def parseUrlAndExtension(entry):
+	def parseUrlAndExtension(self, entry):
 		'''Finds and parses tne download URL and extension of an entry. Only for downloaded streams.'''
 		try:
 			downloadUrl = next(link.href for link in entry.links if link.rel == 'enclosure')
 		except StopIteration:
-			raise LookupError(f'Stream {self.categoryName}/{self.name}: My method for finding the link to download media files has failed for the item \'{itemName}\'.')
+			raise LookupError(f'Stream {self.categoryName}/{self.name}: My method for finding the link to download media files has failed for the item \'{entry.title}\'.')
 		match = re.search(r'\.(\w+)([?#].*)?$', downloadUrl)
 		if match:
 			return (downloadUrl, match[1])
