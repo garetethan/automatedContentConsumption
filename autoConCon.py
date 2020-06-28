@@ -155,7 +155,7 @@ class MainMenu(tk.Frame):
 			displayButton(self.master, text=buttonParts[i][0], command=buttonParts[i][1], row=i, column=0)
 
 	def updateRSS(self):
-		'''Update all RSS feeds by downloading all new files.'''
+		'''Update all streams that have RSS feeds. Core updating code is in Stream.updateRSS().'''
 		win = tk.Toplevel(self.master)
 		win.title('Updating streams')
 		displayMessage(win, text='Updating RSS feeds (for all streams that have a defined RSS feed) in all categories. This is likely to take a while if any of these streams are downloaded. Because of the (single-threaded) nature of Python, your OS will probably tell you that this program is not responding. It is probably fine and not stuck, but just working hard.', width=POPUP_WIDTH)
@@ -163,9 +163,7 @@ class MainMenu(tk.Frame):
 		streamMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=2)
 		progressMessage = displayMessage(win, text='', width=POPUP_WIDTH, row=3)
 		for category in self.categories:
-			for stream in category.streams:
-				forceUpdateMessage(self.master, streamMessage, f'Updating {category.name}/{stream.name}.')
-				stream.updateRSS(self.master, progressMessage)
+			category.updateRSS(self.master, streamMessage, progressMessage)
 		win.destroy()
 		self.refresh()
 
@@ -274,10 +272,10 @@ class MainMenu(tk.Frame):
 				os.rename(f'{CATEGORY_DIR}/{oldCategoryName}/{oldStreamName}', newStreamPath)
 				# Update RSS.
 				if self.type != StreamType.MANUAL:
-					newRss = rssVar.get()
-					if newRss:
-						stream.rss = newRss
-						overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRss})
+					newRSS = rssVar.get()
+					if newRSS:
+						stream.rss = newRSS
+						overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRSS})
 				# Move stream object into new category's list and rename stream object.
 				newCategory.streams.add(stream)
 				stream.name = newStreamName
@@ -339,23 +337,23 @@ class Stream():
 	def updateRSS(self, master, progressMessage):
 		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
 		if self.type != StreamType.MANUAL and self.rss:
-			entries = feedparser.parse(self.rss)['entries']
-			i = 0
+			entries = sorted(feedparser.parse(self.rss)['entries'], key=self.parseDate)
+			i = len(entries) - 1
 			if self.type == StreamType.DOWNLOADED:
 				alreadyDownloaded = sorted([entry for entry in os.listdir(self.path) if os.path.isfile(f'{self.path}/{entry}') and entry != 'info.txt'])
 				# Date (str) of the latest item already downloaded.
 				latestDownloaded = alreadyDownloaded[-1].split(SEP, maxsplit=1)[0] if alreadyDownloaded else BEGINNING_OF_TIME
-				while i < len(entries) - 1 and self.parseDate(entries[i]) > latestDownloaded:
-					i += 1
+				while i > 0 and self.parseDate(entries[i]) > latestDownloaded:
+					i -= 1
+				i += 1
+
+				# If this stream has been disabled but there are updates now, enable it.
+				if self.currentDate == END_OF_TIME and i < len(entries) - 1:
+					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(entries[i]), 3: self.parseName(entries[i]), 4: self.parseUrlAndExtension(entries[i])[1]})
 
 				failures = 0
-				start = max(len(alreadyDownloaded) + i - ITEM_LIMIT, 0)
-				# If this stream has been disabled but there are updates now, enable it.
-				if self.currentDate == END_OF_TIME and i:
-					firstNewItem = entries[i - 1]
-					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: self.parseUrlAndExtension(firstNewItem)[1]})
-
-				for j, entry in enumerate(reversed(entries[start:i])):
+				end = max(len(alreadyDownloaded) + (len(entries) - i) - ITEM_LIMIT, 0)
+				for j, entry in enumerate(entries[i:end]):
 					name = self.parseName(entry)
 					downloadUrl, extension = self.parseUrlAndExtension(entry)
 					forceUpdateMessage(master, progressMessage, f'Downloading \'{name}\' ({j + 1} / {i - start}).')
@@ -368,17 +366,17 @@ class Stream():
 				with open(self.path + '/queue.txt') as queueFile:
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1].split(SEP, maxsplit=1)[0] if queueLines else BEGINNING_OF_TIME
-				while i < len(entries) - 1 and self.parseDate(entries[i]) > latestSaved:
-					i += 1
+
+				while i > 0 and self.parseDate(entries[i]) > latestSaved:
+					i -= 1
+				i += 1
 
 				# If this stream has been disabled but there are updates now, enable it.
-				if self.currentDate == END_OF_TIME and i:
-					firstNewItem = entries[i - 1]
-					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: firstNewItem.link})
+				if self.currentDate == END_OF_TIME and i < len(entries) - 1:
+					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(entries[i]), 3: self.parseName(entries[i]), 4: entries[i].link})
 
-				newItems = [f'{self.parseDate(entry)}{SEP}{self.parseName(entry)}{SEP}{entry.link}\n' for entry in reversed(entries[:i])]
+				newItems = [f'{self.parseDate(entry)}{SEP}{self.parseName(entry)}{SEP}{entry.link}\n' for entry in entries[i:]]
 
-				# We append to the file so that we don't overwrite any items already there.
 				with open(self.path + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
 
@@ -500,8 +498,7 @@ class Category(tk.Frame):
 		self.draw()
 
 	def draw(self):
-		'''Draw all of the parts of this category.
-		Not to be confused with display(), which is defined below and works on tkinter elements.'''
+		'''Draw all of the parts of this category. Not to be confused with display(), which is defined below and works on tkinter elements.'''
 		# Category extends tk.Frame.
 		display(self, row=0, column=self.column, rowspan=8)
 		# Keep track of what rows have already been used. Putting every element in the first available row (regardless of what the type of the current stream is) means that manual streams will appear shorter than downloaded and linked, and the buttons that all streams have (eg "Open directory") will appear in different rows for different categories. But some users might only use manual streams, and some only downloaded and linked.
@@ -569,6 +566,11 @@ class Category(tk.Frame):
 			displayMessage(self.master, text='This category does not contain any streams.', width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
 
+	def updateRSS(self, master, streamMessage, progressMessage):
+		for stream in self.streams:
+			forceUpdateMessage(self.master, streamMessage, f'Updating {self.name}/{stream.name}.')
+			stream.updateRSS(master, progressMessage)
+
 	def __repr__(self):
 		return f'Category({self.master}, {self.name})'
 
@@ -634,6 +636,7 @@ def openMedia(filepath):
 			subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, check=True)
 
 def overwriteLinesInFile(filepath, replacements):
+	'''replacements (dict): Maps *zero-indexed* line numbers to the strs (exluding newlines) that should overwrite the old lines.'''
 	with open(filepath) as fileHandle:
 		lines = fileHandle.readlines()
 	for index, newLine in replacements.items():
