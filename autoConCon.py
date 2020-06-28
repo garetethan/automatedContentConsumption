@@ -136,7 +136,7 @@ class MainMenu(tk.Frame):
 		column = 1
 		for categoryName in categoryNames:			
 			# Categories display themselves when they are created.
-			category = ContentCategory(self.master, categoryName, column)
+			category = Category(self.master, categoryName, column)
 			self.categories.append(category)
 			column += 1
 
@@ -235,10 +235,10 @@ class MainMenu(tk.Frame):
 				except FileExistsError:
 					pass
 			category = next(c for c in self.categories if c.name == categoryName)
-			newStream = ContentStream(category.name, name)
+			newStream = Stream(category.name, name)
 			# Remove old category info (so that it doesn't appear in the background).
 			category.grid_forget()
-			category.streams.append(newStream)
+			category.streams.add(newStream)
 			category.draw()
 			win.destroy()
 		submitButton = displayButton(win, text='Submit', command=submit)
@@ -266,19 +266,21 @@ class MainMenu(tk.Frame):
 				newCategoryName = newCategoryVar.get()
 				newCategory = next(category for category in self.categories if category.name == newCategoryName)
 				oldStreamName = oldStreamVar.get()
-				oldStreamIndex, oldStream = next((i, stream) for (i, stream) in enumerate(oldCategory.streams) if stream.name == oldStreamName)
+				stream = next(stream for stream in oldCategory.streams if stream.name == oldStreamName)
+				oldCategory.streams.remove(stream)
 				newStreamName = newStreamVar.get() or oldStreamName
-				newRss = rssVar.get()
 				# Move stream directory.
 				newStreamPath = f'{CATEGORY_DIR}/{newCategoryName}/{newStreamName}'
 				os.rename(f'{CATEGORY_DIR}/{oldCategoryName}/{oldStreamName}', newStreamPath)
 				# Update RSS.
-				if newRss and oldStream.type != StreamType.MANUAL:
-					oldStream.rss = newRss
-					overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRss})
-				# Move stream obect into new category's list and rename stream object.
-				newCategory.streams.append(oldCategory.streams.pop(oldStreamIndex))
-				oldStream.name = newStreamName
+				if self.type != StreamType.MANUAL:
+					newRss = rssVar.get()
+					if newRss:
+						stream.rss = newRss
+						overwriteLinesInFile(newStreamPath + '/info.txt', {1: newRss})
+				# Move stream object into new category's list and rename stream object.
+				newCategory.streams.add(stream)
+				stream.name = newStreamName
 				self.refresh()
 				mainWin.destroy()
 			displayButton(mainWin, 'Submit', command=submit)
@@ -308,14 +310,15 @@ class MainMenu(tk.Frame):
 				memoFile.write(memoContent)
 		displayButton(self.master, text='Save memo', command=saveMemo, row=13, columnspan=len(self.categories) + 1)
 
-class ContentStream():
+class Stream():
 	'''Represent one stream of content, like a podcast or a YouTube channel.'''
 	def __init__(self, categoryName, streamName):
 		self.name = streamName
 		self.categoryName = categoryName
+		self.path = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 
-		streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
-		with open(streamPath + '/info.txt') as infoFile:
+		# Read stream details.
+		with open(self.path + '/info.txt') as infoFile:
 			# Save lines but chop newlines off the end of each line.
 			infoLines = tuple(line[:-1] for line in infoFile.readlines())
 		self.type = infoLines[0]
@@ -337,10 +340,10 @@ class ContentStream():
 		'''Get the RSS feed for this stream and download all new listed items (up to ITEM_LIMIT).'''
 		if self.type != StreamType.MANUAL and self.rss:
 			entries = feedparser.parse(self.rss)['entries']
-			streamPath = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 			i = 0
 			if self.type == StreamType.DOWNLOADED:
-				alreadyDownloaded = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
+				alreadyDownloaded = sorted([entry for entry in os.listdir(self.path) if os.path.isfile(f'{self.path}/{entry}') and entry != 'info.txt'])
+				# Date (str) of the latest item already downloaded.
 				latestDownloaded = alreadyDownloaded[-1].split(SEP, maxsplit=1)[0] if alreadyDownloaded else BEGINNING_OF_TIME
 				while i < len(entries) - 1 and self.parseDate(entries[i]) > latestDownloaded:
 					i += 1
@@ -350,19 +353,19 @@ class ContentStream():
 				# If this stream has been disabled but there are updates now, enable it.
 				if self.currentDate == END_OF_TIME and i:
 					firstNewItem = entries[i - 1]
-					overwriteLinesInFile(streamPath + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: self.parseUrlAndExtension(firstNewItem)[1]})
+					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: self.parseUrlAndExtension(firstNewItem)[1]})
 
 				for j, entry in enumerate(reversed(entries[start:i])):
 					name = self.parseName(entry)
 					downloadUrl, extension = self.parseUrlAndExtension(entry)
 					forceUpdateMessage(master, progressMessage, f'Downloading \'{name}\' ({j + 1} / {i - start}).')
-					with urllib.request.urlopen(downloadUrl) as response, open(f'{streamPath}/{self.parseDate(entry)}{SEP}{name}.{extension}', 'xb') as outFile:
+					with urllib.request.urlopen(downloadUrl) as response, open(f'{self.path}/{self.parseDate(entry)}{SEP}{name}.{extension}', 'xb') as outFile:
 						shutil.copyfileobj(response, outFile)
 
 			# Type is linked.
 			else:
 				# Downloading metadata is fast enough that there is no point trying to update for every item.
-				with open(streamPath + '/queue.txt') as queueFile:
+				with open(self.path + '/queue.txt') as queueFile:
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1].split(SEP, maxsplit=1)[0] if queueLines else BEGINNING_OF_TIME
 				while i < len(entries) - 1 and self.parseDate(entries[i]) > latestSaved:
@@ -371,12 +374,12 @@ class ContentStream():
 				# If this stream has been disabled but there are updates now, enable it.
 				if self.currentDate == END_OF_TIME and i:
 					firstNewItem = entries[i - 1]
-					overwriteLinesInFile(streamPath + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: firstNewItem.link})
+					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(firstNewItem), 3: self.parseName(firstNewItem), 4: firstNewItem.link})
 
 				newItems = [f'{self.parseDate(entry)}{SEP}{self.parseName(entry)}{SEP}{entry.link}\n' for entry in reversed(entries[:i])]
 
 				# We append to the file so that we don't overwrite any items already there.
-				with open(streamPath + '/queue.txt', 'a', errors='replace') as queueFile:
+				with open(self.path + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
 
 	def parseDate(self, entry):
@@ -411,10 +414,10 @@ class ContentStream():
 			raise ValueError(f'Stream {self.categoryName}/{self.name}: Unable to extract the file extension from <{downloadUrl}>.')
 
 	def __repr__(self):
-		return f'ContentStream({self.categoryName}, {self.name})'
+		return f'Stream({self.categoryName}, {self.name})'
 
 	def __str__(self):
-		return f'ContentStream \'{self.name}\' in category \'{self.categoryName}\''
+		return f'Stream \'{self.name}\' in category \'{self.categoryName}\''
 	
 	def __lt__(self, other):
 		return self.currentDate < other.currentDate
@@ -422,42 +425,38 @@ class ContentStream():
 	def __gt__(self, other):
 		return self.currentDate > other.currentDate
 
-class ContentCategory(tk.Frame):
+class Category(tk.Frame):
 	'''Represent a category of streams like 'Videos' or 'Favourites'. May contain multiple streams of different types.'''
 	def __init__(self, master=None, name=None, column=0):
 		super().__init__(master)
 		self.name = name
-		streamNames = [entry for entry in os.listdir(f'{CATEGORY_DIR}/{self.name}') if os.path.isdir(f'{CATEGORY_DIR}/{self.name}/{entry}')]
-		self.streams = []
-		for streamName in streamNames:
-			self.streams.append(ContentStream(self.name, streamName))
+		self.path = f'{CATEGORY_DIR}/{self.name}'
+		self.streams = set(Stream(self.name, streamName) for streamName in os.listdir(self.path) if os.path.isdir(f'{self.path}/{streamName}'))
+		self.currentStream = min(self.streams) if self.streams else None
 		self.column = column
 		self.draw()
 
 	def completeCurrent(self):
 		'''Advance the current stream by one item.'''
-		cStream = self.currentStream
-		streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
-
 		# Get item list.
-		if cStream.type == StreamType.DOWNLOADED:
-			itemList = [entry for entry in sorted(os.listdir(streamPath)) if os.path.isfile(f'{streamPath}/{entry}') and entry != 'info.txt']
+		if self.currentStream.type == StreamType.DOWNLOADED:
+			itemList = [entry for entry in sorted(os.listdir(self.currentStream.path)) if os.path.isfile(f'{self.currentStream.path}/{entry}') and entry != 'info.txt']
 		# linked or manual.
 		else:
-			with open(streamPath + '/queue.txt') as queueFile:
+			with open(self.currentStream.path + '/queue.txt') as queueFile:
 				# Last char of each line is '\n'.
 				itemList = [line[:-1] for line in queueFile.readlines()]
 
 		# If there is no current.
-		if not cStream.currentDate or cStream.currentDate == BEGINNING_OF_TIME:
+		if not self.currentStream.currentDate or self.currentStream.currentDate == BEGINNING_OF_TIME:
 			# Does not represent the last item in the list, but that the index of the "next" item is 0.
 			oldIndex = -1
 		# If the stream has been paused.
-		elif cStream.currentDate == END_OF_TIME:
+		elif self.currentStream.currentDate == END_OF_TIME:
 			oldIndex = len(itemList) - 1
 		# For any stream type.
 		else:
-			oldIndex = next(i for i, item in enumerate(itemList) if item.startswith(f'{cStream.currentDate}{SEP}{cStream.currentName}'))
+			oldIndex = next(i for i, item in enumerate(itemList) if item.startswith(f'{self.currentStream.currentDate}{SEP}{self.currentStream.currentName}'))
 
 		# If current is last available.
 		if oldIndex + 1 >= len(itemList):
@@ -466,34 +465,34 @@ class ContentCategory(tk.Frame):
 			displayMessage(win, text='You have reached the end of this stream (until it is updated).', width=POPUP_WIDTH)
 			displayButton(win, text='Close', command=win.destroy)
 			# We need to temporarily disable this stream so that any other streams that still have next items can be displayed.
-			cStream.currentDate = END_OF_TIME
+			self.currentStream.currentDate = END_OF_TIME
 		# There is a next one.
 		else:
 			# Update stream object.
-			if cStream.type == StreamType.DOWNLOADED:
-				currentInfo, cStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
-				cStream.currentDate, cStream.currentName = currentInfo.split(SEP, maxsplit=1)
-			elif cStream.type == StreamType.LINKED:
-				cStream.currentDate, cStream.currentName, cStream.currentUrl = itemList[oldIndex + 1].split(SEP, maxsplit=2)
+			if self.currentStream.type == StreamType.DOWNLOADED:
+				currentInfo, self.currentStream.currentExtension = itemList[oldIndex + 1].rsplit('.', maxsplit=1)
+				self.currentStream.currentDate, self.currentStream.currentName = currentInfo.split(SEP, maxsplit=1)
+			elif self.currentStream.type == StreamType.LINKED:
+				self.currentStream.currentDate, self.currentStream.currentName, self.currentStream.currentUrl = itemList[oldIndex + 1].split(SEP, maxsplit=2)
 			# manual.
 			else:
-				cStream.currentDate, cStream.currentName = itemList[oldIndex + 1].split(SEP, maxsplit=2)
-		cStream.currentProgress = '0'
+				self.currentStream.currentDate, self.currentStream.currentName = itemList[oldIndex + 1].split(SEP, maxsplit=2)
+		self.currentStream.currentProgress = '0'
 
 		# Update current in info file.
-		infoLines = [cStream.type]
-		if cStream.type != StreamType.MANUAL:
-			infoLines.append(cStream.rss if cStream.rss else '')
-		infoLines.append(cStream.currentDate)
-		infoLines.append(cStream.currentName)
-		if cStream.type == StreamType.DOWNLOADED:
-			infoLines.append(cStream.currentExtension)
-		elif cStream.type == StreamType.LINKED:
-			infoLines.append(cStream.currentUrl)
-		infoLines.append(cStream.currentProgress)
+		infoLines = [self.currentStream.type]
+		if self.currentStream.type != StreamType.MANUAL:
+			infoLines.append(self.currentStream.rss if self.currentStream.rss else '')
+		infoLines.append(self.currentStream.currentDate)
+		infoLines.append(self.currentStream.currentName)
+		if self.currentStream.type == StreamType.DOWNLOADED:
+			infoLines.append(self.currentStream.currentExtension)
+		elif self.currentStream.type == StreamType.LINKED:
+			infoLines.append(self.currentStream.currentUrl)
+		infoLines.append(self.currentStream.currentProgress)
 		infoLines.append('')
 
-		with open(streamPath + '/info.txt', 'w') as infoFile:
+		with open(self.currentStream.path + '/info.txt', 'w') as infoFile:
 			infoFile.writelines(line + '\n' for line in infoLines)
 
 		# Update UI.
@@ -503,68 +502,65 @@ class ContentCategory(tk.Frame):
 	def draw(self):
 		'''Draw all of the parts of this category.
 		Not to be confused with display(), which is defined below and works on tkinter elements.'''
-		# ContentCategory extends tk.Frame.
+		# Category extends tk.Frame.
 		display(self, row=0, column=self.column, rowspan=8)
 		# Keep track of what rows have already been used. Putting every element in the first available row (regardless of what the type of the current stream is) means that manual streams will appear shorter than downloaded and linked, and the buttons that all streams have (eg "Open directory") will appear in different rows for different categories. But some users might only use manual streams, and some only downloaded and linked.
 		rowIndex = 0
 		displayMessage(self.master, text=self.name, width=CATEGORY_WIDTH, font=HEADER_FONT, row=rowIndex, column=self.column)
 		rowIndex += 1
 		if self.streams:
-			self.currentStream = min(self.streams)
-			cStream = self.currentStream
-			streamPath = f'{CATEGORY_DIR}/{self.name}/{cStream.name}'
-			displayMessage(self.master, text=cStream.name, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+			self.currentStream = self.currentStream
+			displayMessage(self.master, text=self.currentStream.name, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
-			if cStream.type == StreamType.MANUAL:
-				for text in (cStream.currentName, cStream.currentDate):
+			if self.currentStream.type == StreamType.MANUAL:
+				for text in (self.currentStream.currentName, self.currentStream.currentDate):
 					displayMessage(self.master, text=text, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 					rowIndex += 1
 
 			# Downloaded or linked.
 			else:
-				if cStream.currentName:
-					displayMessage(self.master, text=cStream.currentName, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+				if self.currentStream.currentName:
+					displayMessage(self.master, text=self.currentStream.currentName, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 				else:
 					displayMessage(self.master, text='Click \'Current\' to advance to first item', width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 				rowIndex += 1
-				displayMessage(self.master, text=cStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+				displayMessage(self.master, text=self.currentStream.currentDate, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 				rowIndex += 1
 
 			# Progress displaying and saving. Here there is a difference between '' and None.
-			self.currentProgressMessage = displayMessage(self.master, text=cStream.currentProgress, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
+			self.currentProgressMessage = displayMessage(self.master, text=self.currentStream.currentProgress, width=CATEGORY_WIDTH, row=rowIndex, column=self.column)
 			rowIndex += 1
 			self.progressEntry = tk.Entry(self.master, width=8, font=DEFAULT_FONT)
 			display(self.progressEntry, row=rowIndex, column=self.column)
 			rowIndex += 1
 			def saveProgress():
 				progress = self.progressEntry.get()
-				infoPath = streamPath + '/info.txt'
-				overwriteLinesInFile(infoPath, {3 if cStream.type == StreamType.MANUAL else 5: progress})
+				overwriteLinesInFile(self.currentStream.path + '/info.txt', {3 if self.currentStream.type == StreamType.MANUAL else 5: progress})
 				# Make update visible to user.
 				self.currentProgressMessage.configure(text=progress)
 			displayButton(self.master, text='Save progress', command=saveProgress, row=rowIndex, column=self.column)
 			rowIndex += 1
 
-			if cStream.type != StreamType.MANUAL:
+			if self.currentStream.type != StreamType.MANUAL:
 				def openCurrent():
-					if cStream.currentDate == BEGINNING_OF_TIME:
+					if self.currentStream.currentDate == BEGINNING_OF_TIME:
 						win = tk.Toplevel()
 						win.title('Empty stream')
 						displayMessage(win, text='This stream does not yet contain any media items to open.', width=POPUP_WIDTH)
 						displayButton(win, text='Close', command=win.destroy)
 					else:
-						if cStream.type == StreamType.DOWNLOADED:
-							openMedia(f'{streamPath}/{cStream.currentDate}{SEP}{cStream.currentName}.{cStream.currentExtension}')
+						if self.currentStream.type == StreamType.DOWNLOADED:
+							openMedia(f'{self.currentStream.path}/{self.currentStream.currentDate}{SEP}{self.currentStream.currentName}.{self.currentStream.currentExtension}')
 						# Linked.
 						else:
-							openMedia(cStream.currentUrl)
+							openMedia(self.currentStream.currentUrl)
 				displayButton(self.master, text='Open', command=openCurrent, row=rowIndex, column=self.column)
 				rowIndex += 1
 
 			displayButton(self.master, text='Complete', command=self.completeCurrent, row=rowIndex, column=self.column)
 			rowIndex += 1
 			def openInfoFile():
-				openMedia(streamPath + '/info.txt')
+				openMedia(self.currentStream.path + '/info.txt')
 			displayButton(self.master, text='Open info file', command=openInfoFile, row=rowIndex, column=self.column)
 			rowIndex += 1
 
@@ -574,10 +570,10 @@ class ContentCategory(tk.Frame):
 			rowIndex += 1
 
 	def __repr__(self):
-		return f'ContentCategory({self.master}, {self.name})'
+		return f'Category({self.master}, {self.name})'
 
 	def __str__(self):
-		return f'ContentCategory \'{self.name}\' with {len(self.streams)} streams'
+		return f'Category \'{self.name}\' with {len(self.streams)} streams'
 
 def display(widget, *args, **kwargs):
 	'''Wrap .grid() to automatically apply padding.'''
