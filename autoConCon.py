@@ -53,8 +53,7 @@ MEMO_PATH = 'memo.txt'
 # The string used to separate the date, name, and (when applicable) URL of an item in a queue.
 SEP = ';'
 
-# Replace all non-ASCII characters in item names with underscores when saving new items.
-# This helps prevent encoding issues when swapping OSes.
+# Replace all non-ASCII characters in item names with underscores when saving new items. This helps prevent encoding issues.
 FORCE_ASCII = False
 
 # Only dates strictly after the BEGINNING_OF_TIME and strictly before the END_OF_TIME are supported.
@@ -351,12 +350,11 @@ class Stream():
 				if self.currentDate == END_OF_TIME and i < len(entries) - 1:
 					overwriteLinesInFile(self.path + '/info.txt', {2: self.parseDate(entries[i]), 3: self.parseName(entries[i]), 4: self.parseUrlAndExtension(entries[i])[1]})
 
-				failures = 0
-				end = max(len(alreadyDownloaded) + (len(entries) - i) - ITEM_LIMIT, 0)
+				end = max(ITEM_LIMIT - len(alreadyDownloaded) + i, 0)
 				for j, entry in enumerate(entries[i:end]):
 					name = self.parseName(entry)
 					downloadUrl, extension = self.parseUrlAndExtension(entry)
-					forceUpdateMessage(master, progressMessage, f'Downloading \'{name}\' ({j + 1} / {i - start}).')
+					forceUpdateMessage(master, progressMessage, f'Downloading \'{name}\' ({j + 1} / {end - i}).')
 					with urllib.request.urlopen(downloadUrl) as response, open(f'{self.path}/{self.parseDate(entry)}{SEP}{name}.{extension}', 'xb') as outFile:
 						shutil.copyfileobj(response, outFile)
 
@@ -391,7 +389,13 @@ class Stream():
 
 	def parseName(self, entry):
 		if self.type == StreamType.DOWNLOADED:
-			pattern = f'[{SEP}/]'
+			# If on Windows, also exclude chars forbidden from Windows file names.
+			if os.name == 'nt':
+				# Source: https://stackoverflow.com/a/31976060
+				pattern = f'[{SEP}<>:"/\\|?*]'
+			# Assume os.name == 'posix'.
+			else:
+				pattern = f'[{SEP}/]'
 		# Linked.
 		else:
 			pattern = SEP
@@ -409,7 +413,7 @@ class Stream():
 		if match:
 			return (downloadUrl, match[1])
 		else:
-			raise ValueError(f'Stream {self.categoryName}/{self.name}: Unable to extract the file extension from <{downloadUrl}>.')
+			raise ValueError(f'Stream {self.categoryName}/{self.name}: Unable to extract the file extension for \'{entry.title}\' from <{downloadUrl}>.')
 
 	def __repr__(self):
 		return f'Stream({self.categoryName}, {self.name})'
