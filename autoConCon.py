@@ -536,8 +536,8 @@ class Category(tk.Frame):
 			rowIndex += 1
 			def saveProgress():
 				progress = self.progressEntry.get()
-				self.currentProgress = progress
-				self.updateInfoFile()
+				self.currentStream.currentProgress = progress
+				self.currentStream.updateInfoFile()
 				# Make update visible to user.
 				self.currentProgressMessage.configure(text=progress)
 			displayButton(self.master, text='Save progress', command=saveProgress, row=rowIndex, column=self.column)
@@ -574,6 +574,7 @@ class Category(tk.Frame):
 	def advance(self):
 		'''Advance the current stream by one item. Core code in Stream.advance().'''
 		self.currentStream.advance()
+		self.currentStream = min(self.streams)
 		self.refresh()
 
 	def updateRSS(self, master, streamMessage, progressMessage):
