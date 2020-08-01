@@ -53,9 +53,6 @@ MEMO_PATH = 'memo.txt'
 # The string used to separate the date, name, and (when applicable) URL of an item in a queue.
 SEP = ';'
 
-# Replace all non-ASCII characters in item names with underscores when saving new items. This helps prevent encoding issues.
-FORCE_ASCII = False
-
 # Only dates strictly after the BEGINNING_OF_TIME and strictly before the END_OF_TIME are supported.
 BEGINNING_OF_TIME = '1000-01-01'
 END_OF_TIME = '9000-01-01'
@@ -112,7 +109,7 @@ class MainMenu(tk.Frame):
 		'''Display introductory message.'''
 		win = tk.Toplevel(self.master)
 		win.title('Introduction')
-		with open('README.md') as introFile:
+		with openText('README.md') as introFile:
 			intro = 'Hey, it looks like you might be new here. If so, let me explain how this works.\n' + introFile.read()
 		# A monospace font is used to display the info / queue file formatting correctly.
 		introText = tk.Text(win, bg=win.cget('bg'), bd=0, font=('Courier', DEFAULT_FONT[1]), width=100, wrap='word')
@@ -221,7 +218,7 @@ class MainMenu(tk.Frame):
 			else:
 				infoLines = (streamType, rss, BEGINNING_OF_TIME, '', '', '')
 			try:
-				with open(streamPath + '/info.txt', 'x') as infoFile:
+				with openText(streamPath + '/info.txt', 'x') as infoFile:
 					infoFile.writelines(line + '\n' for line in infoLines)
 			except FileExistsError:
 				pass
@@ -294,14 +291,14 @@ class MainMenu(tk.Frame):
 		memoBox = tk.Text(self.master, width=50, height=2, wrap='word', font=DEFAULT_FONT)
 		display(memoBox, row=12, column=0, columnspan=len(self.categories) + 1)
 		try:
-			with open(MEMO_PATH) as memoFile:
+			with openText(MEMO_PATH) as memoFile:
 				memoContent = memoFile.read()
 			memoBox.insert('1.0', memoContent)
 		except FileNotFoundError:
 			open(MEMO_PATH, 'x').close()
 		def saveMemo():
 			memoContent = memoBox.get('1.0', 'end-1c')
-			with open(MEMO_PATH, 'w') as memoFile:
+			with openText(MEMO_PATH, 'w') as memoFile:
 				memoFile.write(memoContent)
 		displayButton(self.master, text='Save memo', command=saveMemo, row=13, columnspan=len(self.categories) + 1)
 
@@ -313,7 +310,7 @@ class Stream():
 		self.path = f'{CATEGORY_DIR}/{self.categoryName}/{self.name}'
 
 		# Read stream details.
-		with open(self.path + '/info.txt') as infoFile:
+		with openText(self.path + '/info.txt') as infoFile:
 			# Save lines but chop newlines off the end of each line.
 			infoLines = tuple(line[:-1] for line in infoFile.readlines())
 		self.type = infoLines[0]
@@ -338,7 +335,7 @@ class Stream():
 			itemList = [entry for entry in sorted(os.listdir(self.path)) if os.path.isfile(f'{self.path}/{entry}') and entry != 'info.txt']
 		# linked or manual.
 		else:
-			with open(self.path + '/queue.txt') as queueFile:
+			with openText(self.path + '/queue.txt') as queueFile:
 				# Last char of each line is '\n'.
 				itemList = [line[:-1] for line in queueFile.readlines()]
 
@@ -407,7 +404,7 @@ class Stream():
 			# Type is linked.
 			else:
 				# Downloading metadata is fast enough that there is no point trying to update for every item.
-				with open(self.path + '/queue.txt') as queueFile:
+				with openText(self.path + '/queue.txt') as queueFile:
 					queueLines = queueFile.readlines()
 					latestSaved = queueLines[-1].split(SEP, maxsplit=1)[0] if queueLines else BEGINNING_OF_TIME
 
@@ -424,7 +421,7 @@ class Stream():
 
 				newItems = [f'{self.parseDate(entry)}{SEP}{self.parseName(entry)}{SEP}{entry.link}\n' for entry in entries[i:]]
 
-				with open(self.path + '/queue.txt', 'a', errors='replace') as queueFile:
+				with openText(self.path + '/queue.txt', 'a', errors='replace') as queueFile:
 					queueFile.writelines(newItems)
 
 	def parseDate(self, entry):
@@ -439,6 +436,7 @@ class Stream():
 	def parseName(self, entry):
 		if self.type == StreamType.DOWNLOADED:
 			# If on Windows, also exclude chars forbidden from Windows file names.
+			# This is imperfect, because the rules for naming files on Windows are complicated.
 			if os.name == 'nt':
 				# Source: https://stackoverflow.com/a/31976060
 				pattern = f'[{SEP}<>:"/\\|?*]'
@@ -448,8 +446,6 @@ class Stream():
 		# Linked.
 		else:
 			pattern = SEP
-		if FORCE_ASCII:
-			pattern += r'|[^\x00-\x7F]'
 		return re.sub(pattern, '_', entry.title)
 
 	def parseUrlAndExtension(self, entry):
@@ -478,7 +474,7 @@ class Stream():
 			infoLines.append(self.currentUrl)
 		infoLines.append(self.currentProgress)
 		infoLines.append('')
-		with open(self.path + '/info.txt', 'w') as infoFile:
+		with openText(self.path + '/info.txt', 'w') as infoFile:
 			infoFile.writelines([line + '\n' for line in infoLines])
 
 	def __repr__(self):
@@ -653,6 +649,9 @@ def openMedia(filepath):
 		# Assume os.name == 'posix'
 		else:
 			subprocess.run(['xdg-open', filepath], stdout=subprocess.DEVNULL, check=True)
+
+def openText(*args, **kwargs):
+	return open(*args, encoding='utf-8', **kwargs)
 
 if __name__ == '__main__':
 	main()
