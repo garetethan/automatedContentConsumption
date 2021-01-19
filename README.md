@@ -1,4 +1,4 @@
-# README
+# Automated Content Consumption
 ## Description
 Automated Content Consumption is designed to keep track of all of the different streams of media that you want to enjoy. Podcasts, YouTube channels, web comics, blogs, and even books. It is based strongly on the idea that media should be consumed chronologically.
 
